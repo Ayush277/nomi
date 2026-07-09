@@ -22,5 +22,11 @@ export default defineConfig({
     // <all_urls> is required so the companion widget can live on every page (ADR-1).
     permissions: ['storage', 'tabs', 'idle', 'alarms'],
     host_permissions: ['<all_urls>'],
+    commands: {
+      'talk-to-nomi': {
+        suggested_key: { default: 'Alt+Shift+N' },
+        description: 'Talk to Nomi (opens chat with voice input)',
+      },
+    },
   },
 });

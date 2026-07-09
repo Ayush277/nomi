@@ -19,6 +19,18 @@ const CONTRACTS: Record<string, Record<string, Record<string, FieldSpec>>> = {
       difficulty: { type: 'string', oneOf: ['Easy', 'Medium', 'Hard', 'unknown'] },
     },
   },
+  youtube: {
+    video_watch: {
+      title: { type: 'string', maxLen: 160 },
+      channel: { type: 'string', maxLen: 100 },
+    },
+  },
+};
+
+/** Where each adapter's signals belong in the event stream. */
+export const ADAPTER_DOMAINS: Record<string, string> = {
+  leetcode: 'leetcode.com',
+  youtube: 'youtube.com',
 };
 
 export function validateSignal(raw: {

@@ -1,4 +1,4 @@
-import { validateSignal } from '../lib/adapters';
+import { ADAPTER_DOMAINS, validateSignal } from '../lib/adapters';
 import { chatRespond, polishStory } from '../lib/chat';
 import { EMPTY_NUDGE_STATE, runNudgeEngine, type NudgeState } from '../lib/nudges/engine';
 import { categorize } from '../lib/privacy';
@@ -79,9 +79,23 @@ async function nudgeTick(): Promise<void> {
     settings,
     state,
   });
-  if (!nudge) return;
-  await chrome.storage.local.set({ [NUDGE_STATE_KEY]: nudge.state });
-  await showBubble(nudge.text);
+  if (nudge) {
+    await chrome.storage.local.set({ [NUDGE_STATE_KEY]: nudge.state });
+    await showBubble(nudge.text);
+  }
+
+  // Ambient mood: focused when deep in a coding/learning stretch.
+  const { 'nomi:mood': mood } = await chrome.storage.session.get('nomi:mood');
+  if (mood?.kind === 'celebrate' && (mood.until ?? 0) > now) return;
+  const visit = await getCurrentVisit();
+  const focused =
+    visit !== null &&
+    now - visit.startTs >= 25 * 60000 &&
+    (visit.category === 'coding' || visit.category === 'learning');
+  const nextKind = focused ? 'focus' : 'idle';
+  if (mood?.kind !== nextKind) {
+    await chrome.storage.session.set({ 'nomi:mood': { kind: nextKind } });
+  }
 }
 
 /** Compact past days into rollups (ADR-3) — idempotent, safe to re-run. */
@@ -127,7 +141,14 @@ export default defineBackground(() => {
       case 'nomi:signal': {
         const signal = validateSignal(msg);
         if (signal) {
-          void recordSignal(signal, 'leetcode.com', categorize('leetcode.com'))
+          const domain = ADAPTER_DOMAINS[signal.adapter];
+          const celebration =
+            signal.kind === 'submission_accepted'
+              ? chrome.storage.session.set({
+                  'nomi:mood': { kind: 'celebrate', until: Date.now() + 12000 },
+                })
+              : Promise.resolve();
+          void Promise.all([recordSignal(signal, domain, categorize(domain)), celebration])
             .then(nudgeTick) // celebrate immediately, not on the next tick
             .then(() => sendResponse({ ok: true }));
           return true;
@@ -177,7 +198,25 @@ export default defineBackground(() => {
   chrome.alarms.create(NUDGE_ALARM, { periodInMinutes: 1 });
   chrome.alarms.create(EVENING_ALARM, { when: nextEveningTime(), periodInMinutes: 60 * 24 });
 
+  // Talk to Nomi from anywhere (rebindable at chrome://extensions/shortcuts).
+  chrome.commands.onCommand.addListener(async (command) => {
+    if (command === 'talk-to-nomi') {
+      await chrome.storage.session.set({ 'nomi:openChat': { ts: Date.now(), voice: true } });
+    }
+  });
+
   chrome.alarms.onAlarm.addListener(async (alarm) => {
+    if (alarm.name.startsWith('nomi:reminder:')) {
+      const id = alarm.name.slice('nomi:reminder:'.length);
+      const { 'nomi:reminders': reminders } = await chrome.storage.local.get('nomi:reminders');
+      const what = reminders?.[id];
+      if (what) {
+        delete reminders[id];
+        await chrome.storage.local.set({ 'nomi:reminders': reminders });
+        await showBubble(`You asked me to remind you: ${what}`);
+      }
+      return;
+    }
     switch (alarm.name) {
       case NUDGE_ALARM:
         await nudgeTick();

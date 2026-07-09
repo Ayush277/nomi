@@ -108,6 +108,17 @@ export function App() {
         </label>
         <label className="row">
           <span>
+            <strong>Speak out loud</strong>
+            <em>Nomi reads its notes in your system voice — nothing leaves the device.</em>
+          </span>
+          <input
+            type="checkbox"
+            checked={settings.voice}
+            onChange={(e) => update({ voice: e.target.checked })}
+          />
+        </label>
+        <label className="row">
+          <span>
             <strong>Quiet hours</strong>
             <em>Nomi stays silent during these hours (wins still get a cheer).</em>
           </span>

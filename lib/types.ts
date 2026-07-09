@@ -74,6 +74,8 @@ export interface NomiSettings {
   /** null = no quiet hours. */
   quietHours: QuietHours | null;
   maxNudgesPerDay: number;
+  /** Speak bubbles out loud (system voices, fully local). */
+  voice: boolean;
   ollama: {
     enabled: boolean;
     model: string;
@@ -85,8 +87,16 @@ export const DEFAULT_SETTINGS: NomiSettings = {
   exclusions: [],
   quietHours: { startHour: 22, endHour: 8 },
   maxNudgesPerDay: 6,
+  voice: true,
   ollama: { enabled: false, model: 'llama3.1:8b' },
 };
+
+/** Widget mood, set by the background, rendered by every tab's orb. */
+export interface MoodState {
+  kind: 'idle' | 'focus' | 'celebrate';
+  /** celebrate only: when to fall back to idle. */
+  until?: number;
+}
 
 // --- daily memory -----------------------------------------------------------
 

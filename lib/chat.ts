@@ -1,8 +1,9 @@
 import { isMemoryQuery, searchMemory } from './memory';
 import { narrate } from './narrative';
 import { ollamaChat, personaPrompt } from './ollama';
+import { confirmText, parseReminder } from './reminders';
 import { getSettings } from './settings';
-import { allRollups, sessionsSince } from './store';
+import { allRollups, eventsSince, sessionsSince } from './store';
 import { todayLine, todayRollup } from './summary';
 import type { ChatMessage } from './types';
 
@@ -42,6 +43,17 @@ export async function chatRespond(text: string, history: ChatMessage[]): Promise
   const q = text.trim();
   const now = Date.now();
 
+  const reminder = parseReminder(q);
+  if (reminder) {
+    const id = crypto.randomUUID();
+    const { 'nomi:reminders': reminders } = await chrome.storage.local.get('nomi:reminders');
+    await chrome.storage.local.set({
+      'nomi:reminders': { ...(reminders ?? {}), [id]: reminder.what },
+    });
+    chrome.alarms.create(`nomi:reminder:${id}`, { when: now + reminder.delayMs });
+    return confirmText(reminder);
+  }
+
   if (/how('s| is| was)? (it going|today|the day)|today so far|what (did|have) i (do|done)/i.test(q)) {
     const rollup = await todayRollup(now);
     return rollup.totalMs < 60000 ? todayLine(now) : narrate(rollup);
@@ -51,6 +63,7 @@ export async function chatRespond(text: string, history: ChatMessage[]): Promise
     return searchMemory(q, {
       sessions: await sessionsSince(0),
       rollups: await allRollups(),
+      events: await eventsSince(0),
       now,
     });
   }

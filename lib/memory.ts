@@ -1,5 +1,5 @@
 import { formatClock, formatDuration, startOfDay, weekdayName } from './time';
-import type { DayRollup, SiteCategory, VisitSession } from './types';
+import type { DayRollup, NomiEvent, SiteCategory, VisitSession } from './types';
 
 /** Memory search without an LLM (ADR-4): keyword + date matching over the
  * 7-day raw window plus rollups. Pure — data is passed in. */
@@ -54,11 +54,29 @@ function whenPhrase(ts: number, now: number): string {
 
 export function searchMemory(
   query: string,
-  data: { sessions: VisitSession[]; rollups: DayRollup[]; now: number },
+  data: { sessions: VisitSession[]; rollups: DayRollup[]; now: number; events?: NomiEvent[] },
 ): string {
   const words = keywords(query);
   if (words.length === 0) {
     return "Tell me what to look for — a site or a topic, like 'when did I last open leetcode?'";
+  }
+
+  // Adapter signals are the most specific memories: video titles, solved slugs.
+  const signalHit = [...(data.events ?? [])]
+    .filter((e) => e.type === 'site_signal' && e.signal)
+    .sort((a, b) => b.ts - a.ts)
+    .find((e) => {
+      const haystack = Object.values(e.signal!.data).join(' ').toLowerCase();
+      return words.some((w) => haystack.includes(w));
+    });
+  if (signalHit?.signal) {
+    const s = signalHit.signal;
+    if (s.kind === 'video_watch') {
+      return `You watched "${s.data.title}" ${whenPhrase(signalHit.ts, data.now)}.`;
+    }
+    if (s.kind === 'submission_accepted') {
+      return `You got "${String(s.data.slug).replace(/-/g, ' ')}" accepted ${whenPhrase(signalHit.ts, data.now)}. ${s.data.difficulty !== 'unknown' ? `(${s.data.difficulty})` : ''}`.trim();
+    }
   }
 
   // Freshest first: raw sessions cover the last 7 days in full detail.
