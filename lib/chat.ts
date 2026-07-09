@@ -11,7 +11,7 @@ import type { ChatMessage } from './types';
  * freeform conversation upgrades in when the user has Ollama running. */
 
 const NO_LLM_FALLBACK =
-  "Freeform chat needs a local model (free — it runs entirely on your machine; see Settings → Local AI). Meanwhile I can still answer things like \"how's today going?\" or \"when did I last open leetcode?\"";
+  'I follow that better with a local model connected (Settings → Local AI — free, stays on your machine). Meanwhile, try: "how\'s today going?" · "when did I last open leetcode?" · "remind me to stretch in 20 minutes".';
 
 const LLM_ERROR_FALLBACK =
   "I couldn't reach the local model just now — is Ollama running? I can still do \"how's today going?\" and \"when did I last…\" from memory.";
@@ -52,6 +52,20 @@ export async function chatRespond(text: string, history: ChatMessage[]): Promise
     });
     chrome.alarms.create(`nomi:reminder:${id}`, { when: now + reminder.delayMs });
     return confirmText(reminder);
+  }
+
+  // A buddy answers hello like a person, not like a search box.
+  if (/^(hi+|hey+|hello+|yo|sup|good (morning|afternoon|evening))[\s!.]*$/i.test(q)) {
+    return "Hey! Right here beside you. Ask for today's story, dig up a memory, or hand me a reminder.";
+  }
+  if (/^(thanks|thank you|thx|ty)\b/i.test(q)) {
+    return "Anytime. I'm not going anywhere.";
+  }
+  if (/\b(who|what) (are|r) (you|u)\b/i.test(q)) {
+    return "I'm Nomi — a quiet companion sharing your workspace. I notice how the day flows, remember it for you, and cheer when things land. Everything stays on this device.";
+  }
+  if (/what can you do|^help[\s!?]*$|how do (i|you) work/i.test(q)) {
+    return 'Three things, done well: "how\'s today going?" tells the story so far · "when did I last open leetcode?" searches memory · "remind me to stretch in 20 minutes" sets a nudge. Connect a local model in Settings and we can talk about anything.';
   }
 
   if (/how('s| is| was)? (it going|today|the day)|today so far|what (did|have) i (do|done)/i.test(q)) {

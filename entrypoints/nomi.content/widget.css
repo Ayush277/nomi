@@ -12,9 +12,28 @@
 
 .nomi-anchor {
   position: absolute;
+  transform-origin: 100% 100%;
   transition:
     right 250ms cubic-bezier(0.22, 1, 0.36, 1),
-    bottom 250ms cubic-bezier(0.22, 1, 0.36, 1);
+    bottom 250ms cubic-bezier(0.22, 1, 0.36, 1),
+    scale 550ms cubic-bezier(0.22, 1, 0.36, 1),
+    translate 550ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 450ms ease;
+}
+
+/* Tucked away: small, sleepy, half over the edge — still there, never gone. */
+.nomi-anchor.docked {
+  scale: 0.42;
+  translate: 34px 34px;
+  opacity: 0.55;
+}
+
+.nomi-anchor.docked .nomi-eye {
+  transform: scaleY(0.16);
+}
+
+.nomi-anchor.docked .nomi-orb {
+  animation-duration: 7.5s;
 }
 
 /* No easing while the user is actually dragging — follow the hand exactly. */

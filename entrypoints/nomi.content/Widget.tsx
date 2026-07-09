@@ -38,6 +38,40 @@ type SpeechRecognitionCtor = new () => {
 const SpeechRec: SpeechRecognitionCtor | undefined =
   (globalThis as any).SpeechRecognition ?? (globalThis as any).webkitSpeechRecognition;
 
+/** Soft, warm delivery: prefer the natural system voices, strip emoji,
+ * slow down a touch. Voices load async, so re-pick until they exist. */
+let cachedVoice: SpeechSynthesisVoice | null | undefined;
+if ('speechSynthesis' in globalThis) {
+  speechSynthesis.addEventListener?.('voiceschanged', () => (cachedVoice = undefined));
+}
+
+function pickVoice(): SpeechSynthesisVoice | null {
+  if (cachedVoice !== undefined) return cachedVoice;
+  const voices = speechSynthesis.getVoices();
+  if (voices.length === 0) return null; // not loaded yet — retry next time
+  const prefer = ['Samantha', 'Siri', 'Ava', 'Zoe', 'Karen', 'Google US English', 'Daniel'];
+  cachedVoice =
+    voices.find((v) => v.lang.startsWith('en') && prefer.some((p) => v.name.includes(p))) ??
+    voices.find((v) => v.lang.startsWith('en')) ??
+    voices[0] ??
+    null;
+  return cachedVoice;
+}
+
+function speak(text: string): void {
+  if (!('speechSynthesis' in window)) return;
+  const clean = text.replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/gu, '').trim();
+  if (!clean) return;
+  const u = new SpeechSynthesisUtterance(clean);
+  const v = pickVoice();
+  if (v) u.voice = v;
+  u.rate = 0.96;
+  u.pitch = 1.04;
+  u.volume = 0.85;
+  speechSynthesis.cancel();
+  speechSynthesis.speak(u);
+}
+
 export function Widget() {
   const [pos, setPos] = useState<Pos>(DEFAULT_POS);
   const [bubble, setBubble] = useState<Bubble | null>(null);
@@ -48,6 +82,9 @@ export function Widget() {
   const [chatOpen, setChatOpen] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [listening, setListening] = useState(false);
+  const [docked, setDocked] = useState(false);
+  const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastTap = useRef(0);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState('');
   const [thinking, setThinking] = useState(false);
@@ -91,6 +128,26 @@ export function Widget() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Buddy behavior: tuck away small after 30s of being ignored; come back
+  // out when hovered, spoken to, or when there's something to say.
+  const wake = useCallback(() => {
+    setDocked(false);
+    if (idleTimer.current) clearTimeout(idleTimer.current);
+    idleTimer.current = setTimeout(() => setDocked(true), 30000);
+  }, []);
+
+  useEffect(() => {
+    wake();
+    return () => {
+      if (idleTimer.current) clearTimeout(idleTimer.current);
+    };
+  }, [wake]);
+
+  useEffect(() => {
+    if (bubble || chatOpen || listening || mood.kind === 'celebrate') wake();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bubble?.id, chatOpen, listening, mood.kind]);
+
   // Celebrations wind down on their own.
   useEffect(() => {
     if (mood.kind !== 'celebrate' || !mood.until) return;
@@ -108,13 +165,8 @@ export function Widget() {
   // If voice is on, the focused tab reads it aloud — local system voices only.
   useEffect(() => {
     if (!bubble) return;
-    if (voiceOn && document.visibilityState === 'visible' && document.hasFocus() && 'speechSynthesis' in window) {
-      const u = new SpeechSynthesisUtterance(bubble.text);
-      u.rate = 1.03;
-      u.pitch = 1.08;
-      u.volume = 0.9;
-      speechSynthesis.cancel();
-      speechSynthesis.speak(u);
+    if (voiceOn && document.visibilityState === 'visible' && document.hasFocus()) {
+      speak(bubble.text);
     }
     const t = setTimeout(() => closeBubble(bubble, 'expired'), BUBBLE_LIFETIME_MS);
     return () => clearTimeout(t);
@@ -181,13 +233,7 @@ export function Widget() {
       setThinking(false);
       setMessages(withReply);
       void chrome.storage.session.set({ [CHAT_KEY]: withReply });
-      if (voiceOn && 'speechSynthesis' in window && document.hasFocus()) {
-        const u = new SpeechSynthesisUtterance(reply);
-        u.rate = 1.03;
-        u.pitch = 1.08;
-        speechSynthesis.cancel();
-        speechSynthesis.speak(u);
-      }
+      if (voiceOn && document.hasFocus()) speak(reply);
     },
     [messages, thinking, voiceOn],
   );
@@ -201,7 +247,7 @@ export function Widget() {
           ...prev,
           {
             role: 'nomi',
-            text: "This browser doesn't offer voice input, so type to me instead — I'm listening either way.",
+            text: "This browser doesn't ship speech recognition, so voice input can't work here — but type away, I'm listening either way. (In Chrome, double-tap me and I'll just listen.)",
             ts: Date.now(),
           },
         ];
@@ -279,18 +325,32 @@ export function Widget() {
     } else if (bubble) {
       closeBubble(bubble, 'dismissed');
     } else {
-      setChatOpen((open) => !open);
+      // One tap: open/close chat. Two quick taps: open AND start listening.
+      const nowTs = Date.now();
+      const doubleTap = nowTs - lastTap.current < 400;
+      lastTap.current = nowTs;
+      if (!chatOpen) {
+        setChatOpen(true);
+      } else if (doubleTap) {
+        startListening();
+      } else {
+        setChatOpen(false);
+      }
     }
-  }, [bubble, closeBubble]);
+    wake();
+  }, [bubble, closeBubble, chatOpen, startListening, wake]);
 
   const moodClass =
     mood.kind === 'celebrate' ? ' celebrate' : mood.kind === 'focus' ? ' focusing' : '';
+  const tucked =
+    docked && !chatOpen && !bubble && !listening && mood.kind !== 'celebrate' && !dragging;
 
   return (
     <div className={`nomi-root${reducedMotion ? ' reduced' : ''}`}>
       <div
-        className={`nomi-anchor${dragging ? ' drag-live' : ''}`}
+        className={`nomi-anchor${dragging ? ' drag-live' : ''}${tucked ? ' docked' : ''}`}
         style={{ right: `${pos.right}px`, bottom: `${pos.bottom}px` }}
+        onPointerEnter={wake}
       >
         {bubble && !chatOpen && (
           <div className="nomi-bubble" onClick={() => closeBubble(bubble, 'dismissed')}>
