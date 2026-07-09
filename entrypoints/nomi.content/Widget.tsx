@@ -28,6 +28,7 @@ export function Widget() {
   const [blink, setBlink] = useState(false);
   const [paused, setPaused] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
+  const [dragging, setDragging] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState('');
   const [thinking, setThinking] = useState(false);
@@ -131,7 +132,10 @@ export function Widget() {
     if (!d) return;
     const dx = e.clientX - d.startX;
     const dy = e.clientY - d.startY;
-    if (Math.hypot(dx, dy) > 5) d.moved = true;
+    if (!d.moved && Math.hypot(dx, dy) > 5) {
+      d.moved = true;
+      setDragging(true);
+    }
     if (d.moved) {
       setPos(clampPos({ right: d.origin.right - dx, bottom: d.origin.bottom - dy }));
     }
@@ -140,11 +144,17 @@ export function Widget() {
   const onPointerUp = useCallback(() => {
     const d = drag.current;
     drag.current = null;
+    setDragging(false);
     if (!d) return;
     if (d.moved) {
+      // Settle toward the nearest edge when close — a companion tidies itself up.
       setPos((p) => {
-        void chrome.storage.local.set({ [POS_KEY]: p });
-        return p;
+        const snapped = {
+          right: p.right < 80 ? 24 : p.right,
+          bottom: p.bottom < 80 ? 24 : p.bottom,
+        };
+        void chrome.storage.local.set({ [POS_KEY]: snapped });
+        return snapped;
       });
     } else if (bubble) {
       closeBubble(bubble, 'dismissed');
@@ -177,7 +187,10 @@ export function Widget() {
 
   return (
     <div className={`nomi-root${reducedMotion ? ' reduced' : ''}`}>
-      <div className="nomi-anchor" style={{ right: `${pos.right}px`, bottom: `${pos.bottom}px` }}>
+      <div
+        className={`nomi-anchor${dragging ? ' drag-live' : ''}`}
+        style={{ right: `${pos.right}px`, bottom: `${pos.bottom}px` }}
+      >
         {bubble && !chatOpen && (
           <div className="nomi-bubble" onClick={() => closeBubble(bubble, 'dismissed')}>
             {bubble.text}
@@ -228,7 +241,7 @@ export function Widget() {
 
         <div
           ref={orbRef}
-          className={`nomi-orb${blink ? ' blink' : ''}${paused ? ' paused' : ''}`}
+          className={`nomi-orb${blink ? ' blink' : ''}${paused ? ' paused' : ''}${bubble && !chatOpen ? ' glow' : ''}`}
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}

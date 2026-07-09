@@ -15,6 +15,29 @@ const NO_LLM_FALLBACK =
 const LLM_ERROR_FALLBACK =
   "I couldn't reach the local model just now — is Ollama running? I can still do \"how's today going?\" and \"when did I last…\" from memory.";
 
+/** Evening-story polish (roadmap Week 6): the template story is the source
+ * of truth; a local model may only rephrase it. Any failure → template wins. */
+export async function polishStory(story: string): Promise<string> {
+  const settings = await getSettings();
+  if (!settings.ollama.enabled) return story;
+  try {
+    const polished = await ollamaChat({
+      model: settings.ollama.model,
+      system: personaPrompt(story),
+      messages: [
+        {
+          role: 'user',
+          content: `Retell this evening note to your human in your own voice. Keep every fact, number, and time exactly as given; 2–3 sentences; no preamble:\n\n${story}`,
+        },
+      ],
+    });
+    // A model that rambles or drops content doesn't get to speak.
+    return polished.length > 20 && polished.length < story.length * 3 ? polished : story;
+  } catch {
+    return story;
+  }
+}
+
 export async function chatRespond(text: string, history: ChatMessage[]): Promise<string> {
   const q = text.trim();
   const now = Date.now();

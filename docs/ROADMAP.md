@@ -24,8 +24,8 @@ Phase 1 target: **6–8 weeks to a Chrome Web Store submission.** Ordering princ
 
 ### Week 3 — Companion widget
 - [x] Avatar: glass circle per DESIGN.md — breathing (4s cycle), blink, gaze-follows-mouse. CSS/transform only.
-- [x] Drag to reposition; position persists. *(Still open: edge snapping; per-site auto-dodge if it covers fixed page UI.)*
-- [x] States: idle / speaking (bubble) / paused (dimmed). *(Still open: has-something-to-say subtle glow.)*
+- [x] Drag to reposition; position persists; edge snapping. *(Still open: per-site auto-dodge if it covers fixed page UI.)*
+- [x] States: idle / has-something-to-say (subtle glow) / speaking (bubble) / paused (dimmed).
 - [x] Notification bubbles: floating glass, auto-dissolve, never stack more than one, click-to-dismiss teaches the rate limiter.
 
 ### Week 4 — Nudge engine
@@ -42,13 +42,13 @@ Phase 1 target: **6–8 weeks to a Chrome Web Store submission.** Ordering princ
 ### Week 6 — Chat & memory search
 - [x] Chat panel attached to the widget (glass sheet).
 - [x] Memory search without LLM: keyword + category + date parsing → timeline answers ("When did I last work on my portfolio?").
-- [x] Ollama integration (optional, settings-gated): connection check, freeform chat with persona system prompt. Graceful copy when absent. *(Still open: LLM-polished daily summary.)*
+- [x] Ollama integration (optional, settings-gated): connection check, freeform chat with persona system prompt, LLM-polished daily summary. Graceful copy when absent.
 
 ### Weeks 7–8 — Trust, polish, ship
 - [x] Onboarding: what Nomi sees / never sees / where data lives; permissions explainer; name greeting.
 - [x] Settings: pause, exclusions, quiet hours, nudge frequency, data export (JSON), one-click wipe.
 - [ ] Perf pass against ADR-6 budget; QA sweep on top-50 sites; accessibility (reduced-motion mode disables breathing/blink).
-- [ ] Privacy policy + Web Store listing (single-purpose statement, screenshots) → **submit**.
+- [ ] Privacy policy + Web Store listing (single-purpose statement, screenshots) → **submit**. *(Policy written: PRIVACY.md · listing drafted: STORE_LISTING.md · icons generated. Remaining: screenshots, hosted policy URL, `npm run zip`, submit.)*
 - [ ] Landing page with waitlist (can proceed in parallel any week — independent workstream).
 
 ### Explicitly out of Phase 1 scope

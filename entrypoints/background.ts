@@ -1,5 +1,5 @@
 import { validateSignal } from '../lib/adapters';
-import { chatRespond } from '../lib/chat';
+import { chatRespond, polishStory } from '../lib/chat';
 import { EMPTY_NUDGE_STATE, runNudgeEngine, type NudgeState } from '../lib/nudges/engine';
 import { categorize } from '../lib/privacy';
 import { buildRollup } from '../lib/rollup';
@@ -192,7 +192,7 @@ export default defineBackground(() => {
         const rollup = await todayRollup();
         if (rollup.totalMs < 10 * 60000) break; // nothing worth narrating
         await saveRollup(rollup);
-        await showBubble(narrate(rollup));
+        await showBubble(await polishStory(narrate(rollup)));
         break;
       }
     }
