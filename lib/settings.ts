@@ -8,6 +8,7 @@ export async function getSettings(): Promise<NomiSettings> {
     ...DEFAULT_SETTINGS,
     ...(stored[SETTINGS_KEY] ?? {}),
     ollama: { ...DEFAULT_SETTINGS.ollama, ...(stored[SETTINGS_KEY]?.ollama ?? {}) },
+    gemini: { ...DEFAULT_SETTINGS.gemini, ...(stored[SETTINGS_KEY]?.gemini ?? {}) },
   };
 }
 

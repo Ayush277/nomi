@@ -1,3 +1,4 @@
+import { geminiChat } from './gemini';
 import { isMemoryQuery, searchMemory } from './memory';
 import { narrate } from './narrative';
 import { ollamaChat, personaPrompt } from './ollama';
@@ -11,10 +12,13 @@ import type { ChatMessage } from './types';
  * freeform conversation upgrades in when the user has Ollama running. */
 
 const NO_LLM_FALLBACK =
-  'I follow that better with a local model connected (Settings → Local AI — free, stays on your machine). Meanwhile, try: "how\'s today going?" · "when did I last open leetcode?" · "remind me to stretch in 20 minutes".';
+  'For open conversation, connect a brain in Settings — a Gemini API key (easiest) or local Ollama (fully private). Meanwhile, try: "how\'s today going?" · "when did I last open leetcode?" · "remind me to stretch in 20 minutes".';
 
-const LLM_ERROR_FALLBACK =
+const OLLAMA_ERROR_FALLBACK =
   "I couldn't reach the local model just now — is Ollama running? I can still do \"how's today going?\" and \"when did I last…\" from memory.";
+
+const GEMINI_ERROR_FALLBACK =
+  "I couldn't reach Gemini just now — worth checking the API key in Settings. Memory, today's story, and reminders all still work.";
 
 /** Evening-story polish (roadmap Week 6): the template story is the source
  * of truth; a local model may only rephrase it. Any failure → template wins. */
@@ -94,21 +98,35 @@ export async function chatRespond(text: string, history: ChatMessage[]): Promise
   }
 
   const settings = await getSettings();
-  if (!settings.ollama.enabled) return NO_LLM_FALLBACK;
+  const useGemini = settings.gemini.enabled && settings.gemini.apiKey.trim() !== '';
+  if (!useGemini && !settings.ollama.enabled) return NO_LLM_FALLBACK;
+
+  const system = personaPrompt(await todayLine(now));
+  const messages = [
+    ...history.slice(-8).map((m) => ({
+      role: m.role === 'nomi' ? ('assistant' as const) : ('user' as const),
+      content: m.text,
+    })),
+    { role: 'user' as const, content: q },
+  ];
+
+  if (useGemini) {
+    try {
+      return await geminiChat({
+        apiKey: settings.gemini.apiKey.trim(),
+        model: settings.gemini.model,
+        system,
+        messages,
+      });
+    } catch {
+      // Fall through to Ollama if it's also configured.
+      if (!settings.ollama.enabled) return GEMINI_ERROR_FALLBACK;
+    }
+  }
 
   try {
-    return await ollamaChat({
-      model: settings.ollama.model,
-      system: personaPrompt(await todayLine(now)),
-      messages: [
-        ...history.slice(-8).map((m) => ({
-          role: m.role === 'nomi' ? ('assistant' as const) : ('user' as const),
-          content: m.text,
-        })),
-        { role: 'user', content: q },
-      ],
-    });
+    return await ollamaChat({ model: settings.ollama.model, system, messages });
   } catch {
-    return LLM_ERROR_FALLBACK;
+    return OLLAMA_ERROR_FALLBACK;
   }
 }

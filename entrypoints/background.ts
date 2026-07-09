@@ -155,12 +155,19 @@ export default defineBackground(() => {
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     switch (msg?.type) {
       case 'nomi:today':
-        void todayLine().then((text) => sendResponse({ text }));
+        void todayLine()
+          .catch(() => "I'm here — just having trouble reading today's notes. Try again?")
+          .then((text) => sendResponse({ text }));
         return true;
       case 'nomi:chat':
-        void chatRespond(String(msg.text ?? ''), msg.history ?? []).then((text) =>
-          sendResponse({ text }),
-        );
+        // The widget must ALWAYS get an answer — a swallowed error here
+        // reads as Nomi ignoring the user, which is the one unforgivable bug.
+        void chatRespond(String(msg.text ?? ''), msg.history ?? [])
+          .catch((err) => {
+            console.error('[nomi] chat error:', err);
+            return `Something glitched on my side (${err instanceof Error ? err.message : 'unknown'}). Say that again?`;
+          })
+          .then((text) => sendResponse({ text }));
         return true;
       case 'nomi:signal': {
         const signal = validateSignal(msg);

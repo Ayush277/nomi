@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { geminiAvailable } from '../../lib/gemini';
 import { ollamaAvailable } from '../../lib/ollama';
 import { getSettings, saveSettings } from '../../lib/settings';
 import { exportAll, wipeAll } from '../../lib/store';
@@ -8,6 +9,7 @@ export function App() {
   const [settings, setSettings] = useState<NomiSettings>(DEFAULT_SETTINGS);
   const [exclusionsText, setExclusionsText] = useState('');
   const [llmStatus, setLlmStatus] = useState<'unknown' | 'checking' | 'ok' | 'missing'>('unknown');
+  const [gemStatus, setGemStatus] = useState<'unknown' | 'checking' | 'ok' | 'missing'>('unknown');
   const [wipeArmed, setWipeArmed] = useState(false);
 
   useEffect(() => {
@@ -38,6 +40,15 @@ export function App() {
   const testOllama = async () => {
     setLlmStatus('checking');
     setLlmStatus((await ollamaAvailable()) ? 'ok' : 'missing');
+  };
+
+  const testGemini = async () => {
+    setGemStatus('checking');
+    setGemStatus(
+      (await geminiAvailable(settings.gemini.apiKey.trim(), settings.gemini.model))
+        ? 'ok'
+        : 'missing',
+    );
   };
 
   const doExport = async () => {
@@ -181,6 +192,57 @@ export function App() {
             {wipeArmed ? 'Click again to erase everything' : 'Erase everything Nomi remembers'}
           </button>
         </div>
+      </section>
+
+      <section>
+        <h2>Cloud AI — Gemini (optional)</h2>
+        <p className="hint">
+          The quickest way to open conversation: paste a free API key from{' '}
+          <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer">Google AI Studio</a>.
+          <strong> Honest note:</strong> with this on, your chat messages (and a one-line
+          today summary) are sent to Google — the only thing that ever leaves this device.
+          Memory, browsing awareness, and reminders stay local regardless.
+        </p>
+        <label className="row">
+          <span>
+            <strong>Chat with Gemini</strong>
+          </span>
+          <input
+            type="checkbox"
+            checked={settings.gemini.enabled}
+            onChange={(e) => update({ gemini: { ...settings.gemini, enabled: e.target.checked } })}
+          />
+        </label>
+        <label className="row">
+          <span>
+            <strong>API key</strong>
+          </span>
+          <span className="quiet-controls">
+            <input
+              type="password"
+              className="model"
+              placeholder="AIza…"
+              value={settings.gemini.apiKey}
+              onChange={(e) => update({ gemini: { ...settings.gemini, apiKey: e.target.value } })}
+            />
+            <button onClick={testGemini} disabled={!settings.gemini.apiKey.trim()}>
+              {gemStatus === 'checking' ? 'Checking…' : 'Test key'}
+            </button>
+            {gemStatus === 'ok' && <span className="ok">Connected ✓</span>}
+            {gemStatus === 'missing' && <span className="bad">Key not working</span>}
+          </span>
+        </label>
+        <label className="row">
+          <span>
+            <strong>Model</strong>
+          </span>
+          <input
+            type="text"
+            className="model"
+            value={settings.gemini.model}
+            onChange={(e) => update({ gemini: { ...settings.gemini, model: e.target.value } })}
+          />
+        </label>
       </section>
 
       <section>

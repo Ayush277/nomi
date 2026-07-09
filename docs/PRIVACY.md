@@ -30,7 +30,10 @@ Honest caveat: the encryption key also lives on your device, so this protects ag
 
 ## Network access
 
-The extension makes **no network requests**, with one opt-in exception: if you enable Local AI in Settings, Nomi talks to an Ollama server at `http://localhost:11434` — software running on your own machine. That traffic never leaves your computer, and the feature is off by default.
+The extension makes **no network requests by default**. Two opt-in exceptions, both off until you enable them in Settings:
+
+1. **Local AI (Ollama)** — Nomi talks to an Ollama server at `http://localhost:11434`, software running on your own machine. That traffic never leaves your computer.
+2. **Cloud AI (Gemini)** — if you paste your own Google API key and switch it on, your **chat messages** (plus a one-line summary of today) are sent to Google's Gemini API to generate replies. Nothing else is ever sent: not your browsing history, not your memory, not your events. Settings states this in plain words next to the toggle, and turning it off stops all cloud traffic immediately.
 
 ## Permissions, and why
 
