@@ -1,0 +1,254 @@
+/* Nomi companion — tokens from docs/DESIGN.md. Lives in a shadow root, so
+   nothing here can leak into the page (and page styles can't leak in). */
+
+.nomi-root {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647;
+  pointer-events: none; /* only the orb/bubble are interactive */
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, sans-serif;
+}
+
+.nomi-anchor {
+  position: absolute;
+}
+
+/* --- the orb ------------------------------------------------------------ */
+
+.nomi-orb {
+  pointer-events: auto;
+  width: 120px;
+  height: 120px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background:
+    linear-gradient(135deg, rgba(196, 181, 253, 0.3), rgba(94, 234, 212, 0.22)),
+    rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(24px) saturate(1.4);
+  -webkit-backdrop-filter: blur(24px) saturate(1.4);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-top-color: rgba(255, 255, 255, 0.34); /* light-from-above */
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+  animation: nomi-breathe 4s ease-in-out infinite;
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+
+.nomi-orb:active {
+  cursor: grabbing;
+}
+
+@keyframes nomi-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.03);
+  }
+}
+
+.nomi-orb.paused {
+  animation: none;
+  opacity: 0.3;
+}
+
+.reduced .nomi-orb {
+  animation: none;
+}
+
+/* --- eyes ---------------------------------------------------------------- */
+
+.nomi-eyes {
+  display: flex;
+  gap: 18px;
+  transition: transform 200ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.nomi-eye {
+  width: 10px;
+  height: 24px;
+  border-radius: 999px;
+  background: rgba(28, 28, 40, 0.72);
+  transition: transform 120ms ease-in-out;
+}
+
+.nomi-orb.blink .nomi-eye {
+  transform: scaleY(0.08);
+}
+
+/* --- speech bubble -------------------------------------------------------- */
+
+.nomi-bubble {
+  pointer-events: auto;
+  position: absolute;
+  bottom: calc(100% + 12px);
+  right: 0;
+  max-width: 280px;
+  width: max-content;
+  padding: 10px 14px;
+  border-radius: 18px;
+  border-bottom-right-radius: 6px;
+  /* dark glass so text stays readable on any page background */
+  background: rgba(22, 22, 32, 0.62);
+  backdrop-filter: blur(24px) saturate(1.4);
+  -webkit-backdrop-filter: blur(24px) saturate(1.4);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 13px;
+  line-height: 1.45;
+  cursor: pointer;
+  animation: nomi-rise 300ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes nomi-rise {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.reduced .nomi-bubble {
+  animation: none;
+}
+
+/* --- chat sheet ------------------------------------------------------------ */
+
+.nomi-chat {
+  pointer-events: auto;
+  position: absolute;
+  bottom: calc(100% + 12px);
+  right: 0;
+  width: 300px;
+  height: 380px;
+  display: flex;
+  flex-direction: column;
+  border-radius: 20px;
+  background: rgba(22, 22, 32, 0.68);
+  backdrop-filter: blur(24px) saturate(1.4);
+  -webkit-backdrop-filter: blur(24px) saturate(1.4);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-top-color: rgba(255, 255, 255, 0.3);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 13px;
+  line-height: 1.45;
+  animation: nomi-rise 300ms cubic-bezier(0.22, 1, 0.36, 1);
+  overflow: hidden;
+}
+
+.reduced .nomi-chat {
+  animation: none;
+}
+
+.nomi-chat-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px 10px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.nomi-chat-close {
+  all: unset;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.nomi-chat-close:hover {
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.nomi-chat-list {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+}
+
+.nomi-msg {
+  max-width: 85%;
+  padding: 8px 12px;
+  border-radius: 14px;
+  white-space: pre-wrap;
+}
+
+.nomi-msg.user {
+  align-self: flex-end;
+  background: linear-gradient(135deg, rgba(196, 181, 253, 0.32), rgba(94, 234, 212, 0.24));
+  border-bottom-right-radius: 5px;
+}
+
+.nomi-msg.nomi {
+  align-self: flex-start;
+  background: rgba(255, 255, 255, 0.09);
+  border-bottom-left-radius: 5px;
+}
+
+.nomi-thinking {
+  opacity: 0.6;
+  letter-spacing: 2px;
+}
+
+.nomi-chips {
+  display: flex;
+  gap: 6px;
+  padding: 0 12px 8px;
+}
+
+.nomi-chips button {
+  all: unset;
+  cursor: pointer;
+  font-size: 11.5px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.nomi-chips button:hover {
+  background: rgba(255, 255, 255, 0.14);
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.nomi-chat-input {
+  padding: 8px 12px 12px;
+}
+
+.nomi-chat-input input {
+  all: unset;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 9px 14px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 13px;
+}
+
+.nomi-chat-input input::placeholder {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.nomi-chat-input input:focus {
+  border-color: rgba(196, 181, 253, 0.5);
+}
