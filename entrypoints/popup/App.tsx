@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { narrate } from '../../lib/narrative';
 import { getSettings, saveSettings } from '../../lib/settings';
-import { sessionsSince } from '../../lib/store';
+import { allRollups, sessionsSince } from '../../lib/store';
+import { computeStreak } from '../../lib/streak';
 import { todayRollup } from '../../lib/summary';
 import { formatClock, formatDuration, startOfDay } from '../../lib/time';
 import type { DayRollup, VisitSession } from '../../lib/types';
@@ -10,9 +11,13 @@ export function App() {
   const [rollup, setRollup] = useState<DayRollup | null>(null);
   const [recent, setRecent] = useState<VisitSession[]>([]);
   const [paused, setPaused] = useState(false);
+  const [streak, setStreak] = useState(0);
 
   useEffect(() => {
-    todayRollup().then(setRollup);
+    Promise.all([todayRollup(), allRollups()]).then(([r, rolls]) => {
+      setRollup(r);
+      setStreak(computeStreak(rolls, r));
+    });
     sessionsSince(startOfDay()).then((s) => setRecent(s.slice(-6).reverse()));
     getSettings().then((s) => setPaused(s.paused));
   }, []);
@@ -48,6 +53,11 @@ export function App() {
               : 'your quiet companion'}
           </p>
         </div>
+        {streak >= 2 && !paused && (
+          <span className="streak" title={`${streak} active days in a row`}>
+            ⚡ {streak}d
+          </span>
+        )}
         <button
           className="gear"
           title="Settings"

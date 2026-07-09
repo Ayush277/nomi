@@ -4,7 +4,32 @@ import type { ChatMessage, MoodState } from '../../lib/types';
 interface Bubble {
   id: string;
   text: string;
+  fx?: string;
 }
+
+type FxKind = 'electric' | 'flame' | 'water';
+
+interface FxParticle {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  life: number;
+  decay: number;
+  r: number;
+  color: string;
+}
+
+interface FxBolt {
+  angle: number;
+  life: number;
+}
+
+const FX_COLORS: Record<FxKind, string[]> = {
+  electric: ['#c4b5fd', '#5eead4', '#ffffff', '#a78bfa'],
+  flame: ['#ffd29d', '#ff8a5c', '#f472b6', '#c4b5fd'],
+  water: ['#7dd3fc', '#38bdf8', '#a5f3fc', '#e0f2fe'],
+};
 
 interface Pos {
   right: number;
@@ -83,8 +108,99 @@ export function Widget() {
   const [dragging, setDragging] = useState(false);
   const [listening, setListening] = useState(false);
   const [docked, setDocked] = useState(false);
+  const [peeking, setPeeking] = useState(false);
+  const [stretching, setStretching] = useState(false);
+  const [aqua, setAqua] = useState(false);
+  const [hop, setHop] = useState(false);
   const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastTap = useRef(0);
+  const fxRef = useRef<HTMLCanvasElement>(null);
+  const fxRaf = useRef(0);
+
+  /** Particle bursts drawn behind the orb: electric arcs for wins, plasma
+   * flame for the big ones, falling drops for water time. Pure canvas —
+   * no page layout is ever touched. */
+  const runFx = useCallback((kind: FxKind) => {
+    if (reducedMotion) return;
+    const cv = fxRef.current;
+    const ctx = cv?.getContext('2d');
+    if (!cv || !ctx) return;
+    const W = (cv.width = 300);
+    const H = (cv.height = 300);
+    const cx = W / 2;
+    const cy = H / 2;
+    const colors = FX_COLORS[kind];
+    const parts: FxParticle[] = [];
+    const count = kind === 'water' ? 22 : 34;
+    for (let i = 0; i < count; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const sp = kind === 'water' ? 0.6 + Math.random() * 1.4 : 2 + Math.random() * 4.5;
+      parts.push({
+        x: cx + (kind === 'water' ? (Math.random() - 0.5) * 60 : 0),
+        y: kind === 'water' ? cy - 78 : cy,
+        vx: Math.cos(a) * sp * (kind === 'water' ? 0.3 : 1),
+        vy: kind === 'water' ? 0.8 + Math.random() * 1.6 : Math.sin(a) * sp - (kind === 'flame' ? 1.6 : 0),
+        life: 1,
+        decay: 0.012 + Math.random() * 0.02,
+        r: 1.5 + Math.random() * 2.4,
+        color: colors[i % colors.length],
+      });
+    }
+    const bolts: FxBolt[] =
+      kind === 'electric'
+        ? [0, 1, 2].map(() => ({ angle: Math.random() * Math.PI * 2, life: 1 }))
+        : [];
+
+    cancelAnimationFrame(fxRaf.current);
+    const tick = () => {
+      ctx.clearRect(0, 0, W, H);
+      ctx.globalCompositeOperation = 'lighter';
+      for (const b of bolts) {
+        if (b.life <= 0) continue;
+        b.life -= 0.07;
+        if (Math.random() < 0.4) b.angle += (Math.random() - 0.5) * 0.6;
+        ctx.strokeStyle = `rgba(200,220,255,${Math.max(b.life, 0)})`;
+        ctx.lineWidth = 1.6;
+        ctx.shadowBlur = 12;
+        ctx.shadowColor = '#8b5cf6';
+        ctx.beginPath();
+        let x = cx + Math.cos(b.angle) * 62;
+        let y = cy + Math.sin(b.angle) * 62;
+        ctx.moveTo(x, y);
+        for (let s = 0; s < 5; s++) {
+          x += Math.cos(b.angle) * 13 + (Math.random() - 0.5) * 16;
+          y += Math.sin(b.angle) * 13 + (Math.random() - 0.5) * 16;
+          ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+      }
+      let alive = false;
+      for (const p of parts) {
+        if (p.life <= 0) continue;
+        alive = true;
+        p.x += p.vx;
+        p.y += p.vy;
+        if (kind === 'flame') p.vy -= 0.05;
+        else if (kind === 'water') p.vy += 0.09;
+        else {
+          p.vx *= 0.96;
+          p.vy *= 0.96;
+        }
+        p.life -= p.decay;
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = p.color;
+        ctx.fillStyle = p.color;
+        ctx.globalAlpha = Math.max(p.life, 0);
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r, 0, 7);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+      if (alive || bolts.some((b) => b.life > 0)) fxRaf.current = requestAnimationFrame(tick);
+      else ctx.clearRect(0, 0, W, H);
+    };
+    fxRaf.current = requestAnimationFrame(tick);
+  }, []);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState('');
   const [thinking, setThinking] = useState(false);
@@ -148,12 +264,67 @@ export function Widget() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bubble?.id, chatOpen, listening, mood.kind]);
 
-  // Celebrations wind down on their own.
+  // Celebrations wind down on their own — and fire the matching burst.
   useEffect(() => {
     if (mood.kind !== 'celebrate' || !mood.until) return;
+    runFx(mood.flavor === 'flame' ? 'flame' : 'electric');
     const t = setTimeout(() => setMood({ kind: 'idle' }), Math.max(0, mood.until - Date.now()));
     return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mood]);
+
+  // Physical actions that arrive attached to bubbles.
+  useEffect(() => {
+    if (!bubble?.fx) return;
+    if (bubble.fx === 'water') {
+      runFx('water');
+      setAqua(true);
+      const t = setTimeout(() => setAqua(false), 2600);
+      return () => clearTimeout(t);
+    }
+    if (bubble.fx === 'stretch') {
+      setStretching(true);
+      const t = setTimeout(() => setStretching(false), 2500);
+      return () => clearTimeout(t);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bubble?.id]);
+
+  // While tucked away, peek out now and then — checking on you, quietly.
+  useEffect(() => {
+    if (!docked) return;
+    let t: ReturnType<typeof setTimeout>;
+    let alive = true;
+    const loop = () => {
+      t = setTimeout(() => {
+        if (!alive) return;
+        setPeeking(true);
+        setTimeout(() => setPeeking(false), 2600);
+        loop();
+      }, 40000 + Math.random() * 45000);
+    };
+    loop();
+    return () => {
+      alive = false;
+      clearTimeout(t);
+    };
+  }, [docked]);
+
+  // A little hop when you come back after being away a while.
+  useEffect(() => {
+    let hiddenAt = 0;
+    const onVis = () => {
+      if (document.visibilityState === 'hidden') {
+        hiddenAt = Date.now();
+      } else if (hiddenAt && Date.now() - hiddenAt > 20 * 60000) {
+        setHop(true);
+        setTimeout(() => setHop(false), 1600);
+        wake();
+      }
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, [wake]);
 
   const closeBubble = useCallback((b: Bubble, reason: 'dismissed' | 'expired') => {
     setBubble(null);
@@ -348,7 +519,9 @@ export function Widget() {
   return (
     <div className={`nomi-root${reducedMotion ? ' reduced' : ''}`}>
       <div
-        className={`nomi-anchor${dragging ? ' drag-live' : ''}${tucked ? ' docked' : ''}`}
+        className={`nomi-anchor${dragging ? ' drag-live' : ''}${tucked ? ' docked' : ''}${
+          tucked && peeking ? ' peeking' : ''
+        }`}
         style={{ right: `${pos.right}px`, bottom: `${pos.bottom}px` }}
         onPointerEnter={wake}
       >
@@ -361,7 +534,11 @@ export function Widget() {
         {chatOpen && (
           <div className="nomi-chat">
             <div className="nomi-chat-head">
-              <span>Nomi</span>
+              <span>
+                <i className="nomi-status" aria-hidden="true" />
+                Nomi
+              </span>
+              <span className="nomi-chat-sub">ON-DEVICE</span>
               <button className="nomi-chat-close" onClick={() => setChatOpen(false)} aria-label="Close chat">
                 ×
               </button>
@@ -383,6 +560,7 @@ export function Widget() {
             <div className="nomi-chips">
               <button onClick={() => send("How's today going?")}>Today?</button>
               <button onClick={() => send('When did I last open leetcode?')}>Last seen…</button>
+              <button onClick={() => send('Focus with me for 25 minutes')}>Focus 25m</button>
             </div>
             <form
               className="nomi-chat-input"
@@ -410,20 +588,29 @@ export function Widget() {
           </div>
         )}
 
-        <div
-          ref={orbRef}
-          className={`nomi-orb${blink ? ' blink' : ''}${paused ? ' paused' : ''}${
-            bubble && !chatOpen ? ' glow' : ''
-          }${moodClass}`}
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={onPointerUp}
-          role="img"
-          aria-label="Nomi companion"
-        >
-          <div className="nomi-eyes" ref={eyesRef}>
-            <div className="nomi-eye" />
-            <div className="nomi-eye" />
+        <div className="nomi-orbwrap">
+          <canvas ref={fxRef} className="nomi-fx" width={300} height={300} aria-hidden="true" />
+          <div
+            className={`nomi-ring${mood.kind === 'focus' ? ' fast' : ''}${listening ? ' hot' : ''}`}
+            aria-hidden="true"
+          />
+          <div
+            ref={orbRef}
+            className={`nomi-orb${blink ? ' blink' : ''}${paused ? ' paused' : ''}${
+              bubble && !chatOpen ? ' glow' : ''
+            }${moodClass}${stretching ? ' stretching' : ''}${aqua ? ' aqua' : ''}${
+              hop ? ' hop' : ''
+            }`}
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={onPointerUp}
+            role="img"
+            aria-label="Nomi companion"
+          >
+            <div className="nomi-eyes" ref={eyesRef}>
+              <div className="nomi-eye" />
+              <div className="nomi-eye" />
+            </div>
           </div>
         </div>
       </div>

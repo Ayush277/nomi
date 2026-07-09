@@ -65,7 +65,18 @@ export async function chatRespond(text: string, history: ChatMessage[]): Promise
     return "I'm Nomi — a quiet companion sharing your workspace. I notice how the day flows, remember it for you, and cheer when things land. Everything stays on this device.";
   }
   if (/what can you do|^help[\s!?]*$|how do (i|you) work/i.test(q)) {
-    return 'Three things, done well: "how\'s today going?" tells the story so far · "when did I last open leetcode?" searches memory · "remind me to stretch in 20 minutes" sets a nudge. Connect a local model in Settings and we can talk about anything.';
+    return 'What I do: "how\'s today going?" tells the story so far · "when did I last open leetcode?" searches memory · "remind me to stretch in 20 minutes" sets a nudge · "focus with me for 25 minutes" starts a quiet heads-down timer. Connect a local model in Settings and we can talk about anything.';
+  }
+
+  // "focus with me for 25 minutes" — Nomi holds the clock and keeps quiet.
+  const focus = q.match(/focus (?:with me )?for (\d+)\s*(minutes?|mins?|m|hours?|hrs?|h)\b/i);
+  if (focus) {
+    const mins = Number(focus[1]) * (/^h/i.test(focus[2]) ? 60 : 1);
+    const until = now + mins * 60000;
+    await chrome.storage.local.set({ 'nomi:focusSession': { until, minutes: mins } });
+    chrome.alarms.create('nomi:focusEnd', { when: until });
+    await chrome.storage.session.set({ 'nomi:mood': { kind: 'focus' } });
+    return `${mins} minutes, heads down. I'll keep everything quiet and hold the clock — go.`;
   }
 
   if (/how('s| is| was)? (it going|today|the day)|today so far|what (did|have) i (do|done)/i.test(q)) {

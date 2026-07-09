@@ -83,6 +83,23 @@ h1 {
   margin-top: 2px;
 }
 
+.streak {
+  margin-left: auto;
+  font-family: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(94, 234, 212, 0.12);
+  border: 1px solid rgba(94, 234, 212, 0.3);
+  color: rgba(153, 246, 228, 0.95);
+  white-space: nowrap;
+}
+
+.streak + .gear {
+  margin-left: 0;
+}
+
 .gear {
   all: unset;
   cursor: pointer;

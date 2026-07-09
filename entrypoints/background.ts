@@ -5,6 +5,7 @@ import { categorize } from '../lib/privacy';
 import { buildRollup } from '../lib/rollup';
 import { getSettings } from '../lib/settings';
 import {
+  allRollups,
   eventsSince,
   getRollup,
   pruneOldData,
@@ -12,6 +13,7 @@ import {
   sessionsBetween,
   sessionsSince,
 } from '../lib/store';
+import { computeStreak } from '../lib/streak';
 import { todayLine, todayRollup } from '../lib/summary';
 import { narrate } from '../lib/narrative';
 import { dateKey, startOfDay } from '../lib/time';
@@ -39,9 +41,9 @@ async function syncToActiveTab(): Promise<void> {
   await transitionTo(url, tabId);
 }
 
-async function showBubble(text: string): Promise<void> {
+async function showBubble(text: string, fx?: string): Promise<void> {
   await chrome.storage.session.set({
-    'nomi:bubble': { id: crypto.randomUUID(), text },
+    'nomi:bubble': { id: crypto.randomUUID(), text, fx },
   });
   const { [STATS_KEY]: stats } = await chrome.storage.local.get(STATS_KEY);
   await chrome.storage.local.set({
@@ -64,10 +66,21 @@ async function recordBubbleClosed(id: string, reason: 'dismissed' | 'expired'): 
   });
 }
 
+/** Rules whose delivery comes with a physical action from the orb. */
+const FX_BY_RULE: Record<string, string> = { hydration: 'water', 'break-time': 'stretch' };
+
 async function nudgeTick(): Promise<void> {
   const now = Date.now();
   const settings = await getSettings();
   if (settings.paused) return;
+
+  // A "focus with me" session: hold the mood, say nothing until the bell.
+  const { 'nomi:focusSession': focusSession } = await chrome.storage.local.get('nomi:focusSession');
+  if (focusSession && focusSession.until > now) {
+    await chrome.storage.session.set({ 'nomi:mood': { kind: 'focus' } });
+    return;
+  }
+
   const stored = await chrome.storage.local.get(NUDGE_STATE_KEY);
   const state: NudgeState = { ...EMPTY_NUDGE_STATE, ...(stored[NUDGE_STATE_KEY] ?? {}) };
 
@@ -81,7 +94,18 @@ async function nudgeTick(): Promise<void> {
   });
   if (nudge) {
     await chrome.storage.local.set({ [NUDGE_STATE_KEY]: nudge.state });
-    await showBubble(nudge.text);
+    await showBubble(nudge.text, FX_BY_RULE[nudge.ruleId]);
+  }
+
+  // Streak note: once a day, mid-morning or later, when it's real.
+  const today = dateKey(now);
+  const { 'nomi:streakShownOn': streakShown } = await chrome.storage.local.get('nomi:streakShownOn');
+  if (new Date(now).getHours() >= 10 && streakShown !== today) {
+    await chrome.storage.local.set({ 'nomi:streakShownOn': today });
+    const streak = computeStreak(await allRollups(), await todayRollup(now));
+    if (streak >= 2) {
+      await showBubble(`Day ${streak} in a row. Quiet consistency — that's how it compounds.`);
+    }
   }
 
   // Ambient mood: focused when deep in a coding/learning stretch.
@@ -144,9 +168,20 @@ export default defineBackground(() => {
           const domain = ADAPTER_DOMAINS[signal.adapter];
           const celebration =
             signal.kind === 'submission_accepted'
-              ? chrome.storage.session.set({
-                  'nomi:mood': { kind: 'celebrate', until: Date.now() + 12000 },
-                })
+              ? (async () => {
+                  // Hard problems and hot days earn the flame.
+                  const wins = (await eventsSince(startOfDay())).filter(
+                    (e) => e.type === 'site_signal' && e.signal?.kind === 'submission_accepted',
+                  ).length;
+                  const flame = signal.data.difficulty === 'Hard' || wins >= 2;
+                  await chrome.storage.session.set({
+                    'nomi:mood': {
+                      kind: 'celebrate',
+                      until: Date.now() + 12000,
+                      flavor: flame ? 'flame' : 'electric',
+                    },
+                  });
+                })()
               : Promise.resolve();
           void Promise.all([recordSignal(signal, domain, categorize(domain)), celebration])
             .then(nudgeTick) // celebrate immediately, not on the next tick
@@ -206,6 +241,18 @@ export default defineBackground(() => {
   });
 
   chrome.alarms.onAlarm.addListener(async (alarm) => {
+    if (alarm.name === 'nomi:focusEnd') {
+      const { 'nomi:focusSession': fs } = await chrome.storage.local.get('nomi:focusSession');
+      await chrome.storage.local.remove('nomi:focusSession');
+      await chrome.storage.session.set({
+        'nomi:mood': { kind: 'celebrate', until: Date.now() + 9000, flavor: 'electric' },
+      });
+      await showBubble(
+        `Time — ${fs?.minutes ?? 'the'} minutes of heads-down, done. Shake it out?`,
+        'stretch',
+      );
+      return;
+    }
     if (alarm.name.startsWith('nomi:reminder:')) {
       const id = alarm.name.slice('nomi:reminder:'.length);
       const { 'nomi:reminders': reminders } = await chrome.storage.local.get('nomi:reminders');

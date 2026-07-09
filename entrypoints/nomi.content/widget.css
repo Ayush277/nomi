@@ -36,6 +36,37 @@
   animation-duration: 7.5s;
 }
 
+.nomi-anchor.docked .nomi-ring {
+  opacity: 0.12;
+}
+
+/* Peeking: rises from the tuck, glances around, sinks back. */
+.nomi-anchor.docked.peeking {
+  translate: 30px 4px;
+  opacity: 0.9;
+}
+
+.nomi-anchor.docked.peeking .nomi-eye {
+  transform: none;
+}
+
+.nomi-anchor.docked.peeking .nomi-eyes {
+  animation: nomi-glance 2.4s ease-in-out;
+}
+
+@keyframes nomi-glance {
+  0%,
+  100% {
+    translate: 0 0;
+  }
+  25% {
+    translate: -5px -2px;
+  }
+  60% {
+    translate: 5px -2px;
+  }
+}
+
 /* No easing while the user is actually dragging — follow the hand exactly. */
 .nomi-anchor.drag-live,
 .reduced .nomi-anchor {
@@ -43,6 +74,70 @@
 }
 
 /* --- the orb ------------------------------------------------------------ */
+
+.nomi-orbwrap {
+  position: relative;
+  width: 120px;
+  height: 120px;
+}
+
+/* Particle layer: bursts render behind/around the orb, never touch the page. */
+.nomi-fx {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 300px;
+  height: 300px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+/* HUD scan ring — the quiet "systems on" signal. */
+.nomi-ring {
+  position: absolute;
+  inset: -9px;
+  border-radius: 50%;
+  pointer-events: none;
+  opacity: 0.35;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0 66%,
+    rgba(94, 234, 212, 0.9) 82%,
+    rgba(196, 181, 253, 0.95) 91%,
+    transparent 100%
+  );
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2.5px), #000 calc(100% - 1.5px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 2.5px), #000 calc(100% - 1.5px));
+  animation: nomi-spin 9s linear infinite;
+}
+
+@keyframes nomi-spin {
+  to {
+    rotate: 1turn;
+  }
+}
+
+.nomi-ring.fast {
+  opacity: 0.65;
+  animation-duration: 3.2s;
+}
+
+.nomi-ring.hot {
+  opacity: 0.85;
+  animation-duration: 1.4s;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0 58%,
+    rgba(252, 165, 165, 0.95) 78%,
+    rgba(196, 181, 253, 0.95) 92%,
+    transparent 100%
+  );
+}
+
+.reduced .nomi-ring {
+  animation: none;
+  opacity: 0.18;
+}
 
 .nomi-orb {
   pointer-events: auto;
@@ -141,6 +236,49 @@
 
 .reduced .nomi-orb.celebrate {
   animation: none;
+}
+
+/* Stretch break: a real stand-up-and-reach, shoulders and all. */
+.nomi-orb.stretching {
+  animation:
+    nomi-stretch 2.4s cubic-bezier(0.22, 1, 0.36, 1) 1,
+    nomi-breathe 4s ease-in-out infinite;
+}
+
+.nomi-orb.stretching .nomi-eye {
+  transform: scaleY(0.3) translateY(-2px);
+}
+
+@keyframes nomi-stretch {
+  0%,
+  100% {
+    transform: scale(1, 1);
+  }
+  22% {
+    transform: scale(0.92, 1.16) translateY(-9px);
+  }
+  38% {
+    transform: scale(0.93, 1.13) translateY(-9px) rotate(-5deg);
+  }
+  54% {
+    transform: scale(0.93, 1.13) translateY(-9px) rotate(5deg);
+  }
+  74% {
+    transform: scale(1.07, 0.93);
+  }
+}
+
+/* Water moment: a brief aqua shift while the drops fall. */
+.nomi-orb.aqua {
+  filter: hue-rotate(45deg) saturate(1.4) brightness(1.05);
+  transition: filter 500ms ease;
+}
+
+/* Happy hop when you come back. */
+.nomi-orb.hop {
+  animation:
+    nomi-breathe 4s ease-in-out infinite,
+    nomi-cheer 700ms cubic-bezier(0.22, 1, 0.36, 1) 2;
 }
 
 .nomi-orb.paused {
@@ -244,11 +382,50 @@
 .nomi-chat-head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 10px;
   padding: 12px 16px 10px;
   font-weight: 600;
   letter-spacing: 0.01em;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.nomi-chat-head > span:first-child {
+  display: flex;
+  align-items: center;
+}
+
+.nomi-status {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #5eead4;
+  box-shadow: 0 0 8px #5eead4;
+  margin-right: 8px;
+  animation: nomi-status-pulse 2.6s ease-in-out infinite;
+}
+
+@keyframes nomi-status-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+.nomi-chat-sub {
+  margin-left: auto;
+  font-family: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, monospace;
+  font-size: 9.5px;
+  letter-spacing: 0.16em;
+  color: rgba(255, 255, 255, 0.35);
+  font-weight: 500;
+}
+
+.reduced .nomi-status {
+  animation: none;
 }
 
 .nomi-chat-close {

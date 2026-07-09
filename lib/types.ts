@@ -96,7 +96,12 @@ export interface MoodState {
   kind: 'idle' | 'focus' | 'celebrate';
   /** celebrate only: when to fall back to idle. */
   until?: number;
+  /** celebrate only: electric = normal win, flame = Hard / hot streak. */
+  flavor?: 'electric' | 'flame';
 }
+
+/** Special effect attached to a bubble (water drop, stretch action, …). */
+export type BubbleFx = 'water' | 'stretch';
 
 // --- daily memory -----------------------------------------------------------
 
