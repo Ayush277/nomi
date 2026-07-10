@@ -3,7 +3,16 @@
  * WASM. The one network fetch is the model download itself (~40 MB, once,
  * from HuggingFace's CDN), after which it's cached locally. */
 
-import { pipeline } from '@huggingface/transformers';
+import { env, pipeline } from '@huggingface/transformers';
+
+// Extension pages can never load remote scripts, so onnxruntime's WASM
+// loader must come from inside the extension — bundled from public/ort/.
+const onnxWasm = env.backends?.onnx?.wasm;
+if (onnxWasm) {
+  onnxWasm.wasmPaths = chrome.runtime.getURL('/ort/');
+  // Offscreen documents aren't cross-origin isolated → no SharedArrayBuffer.
+  onnxWasm.numThreads = 1;
+}
 
 type Asr = (audio: Float32Array) => Promise<{ text?: string }>;
 
@@ -22,16 +31,32 @@ async function getAsr(): Promise<Asr> {
   if (asr) return asr;
   asrLoading ??= (async () => {
     report('loading');
-    const p = await pipeline('automatic-speech-recognition', 'onnx-community/whisper-tiny.en', {
-      dtype: 'q8',
-      progress_callback: (d: any) => {
-        if (d?.status === 'progress' && d.total) {
-          report('progress', { pct: Math.round((d.loaded / d.total) * 100) });
-        }
-      },
-    });
-    report('ready');
-    return p as unknown as Asr;
+    const progress_callback = (d: any) => {
+      if (d?.status === 'progress' && d.total) {
+        report('progress', { pct: Math.round((d.loaded / d.total) * 100) });
+      }
+    };
+    // Quantized first (fast, ~40 MB); if this ort build rejects the export,
+    // fall back to fp32 rather than failing the feature.
+    const attempts = [
+      { model: 'Xenova/whisper-tiny.en', dtype: 'q8' as const },
+      { model: 'Xenova/whisper-tiny.en', dtype: 'fp32' as const },
+    ];
+    let lastErr: unknown;
+    for (const a of attempts) {
+      try {
+        const p = await pipeline('automatic-speech-recognition', a.model, {
+          dtype: a.dtype,
+          progress_callback,
+        });
+        report('ready');
+        return p as unknown as Asr;
+      } catch (err) {
+        lastErr = err;
+      }
+    }
+    asrLoading = null; // allow a retry on the next attempt
+    throw lastErr;
   })();
   asr = await asrLoading;
   return asr;
@@ -137,7 +162,10 @@ async function listenOnce(): Promise<void> {
     report('idle');
     void chrome.runtime.sendMessage({ type: 'nomi:voiceText', text }).catch(() => {});
   } catch (err) {
-    report((err as Error)?.name === 'NotAllowedError' ? 'denied' : 'error');
+    const e = err as Error;
+    report(e?.name === 'NotAllowedError' ? 'denied' : 'error', {
+      message: String(e?.message ?? e).slice(0, 160),
+    });
   } finally {
     busy = false;
   }
@@ -188,7 +216,10 @@ async function wakeLoop(): Promise<void> {
     void ac.close();
     report('wake-off');
   } catch (err) {
-    report((err as Error)?.name === 'NotAllowedError' ? 'denied' : 'error');
+    const e = err as Error;
+    report(e?.name === 'NotAllowedError' ? 'denied' : 'error', {
+      message: String(e?.message ?? e).slice(0, 160),
+    });
   } finally {
     wakeLoopRunning = false;
   }

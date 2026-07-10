@@ -49,6 +49,14 @@ const GAZE_TRAVEL_PX = 4;
 const reducedMotion =
   typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+const VERSION = (() => {
+  try {
+    return chrome.runtime.getManifest().version;
+  } catch {
+    return '?';
+  }
+})();
+
 /** Soft two-note chime for focus timers — WebAudio, quiet by design. */
 function chime(kind: 'start' | 'end'): void {
   try {
@@ -117,9 +125,11 @@ export function Widget() {
   const [mood, setMood] = useState<MoodState>({ kind: 'idle' });
   const [chatOpen, setChatOpen] = useState(false);
   const [dragging, setDragging] = useState(false);
-  const [voiceStatus, setVoiceStatus] = useState<{ status: string; pct?: number }>({
-    status: 'idle',
-  });
+  const [voiceStatus, setVoiceStatus] = useState<{
+    status: string;
+    pct?: number;
+    message?: string;
+  }>({ status: 'idle' });
   const [docked, setDocked] = useState(false);
   const [peeking, setPeeking] = useState(false);
   const [stretching, setStretching] = useState(false);
@@ -497,7 +507,11 @@ export function Widget() {
   const onPointerDown = useCallback(
     (e: React.PointerEvent) => {
       e.preventDefault();
-      (e.target as Element).setPointerCapture(e.pointerId);
+      try {
+        (e.target as Element).setPointerCapture(e.pointerId);
+      } catch {
+        // some environments reject capture — dragging degrades, taps still work
+      }
       drag.current = { startX: e.clientX, startY: e.clientY, origin: pos, moved: false };
     },
     [pos],
@@ -532,10 +546,10 @@ export function Widget() {
         void chrome.storage.local.set({ [POS_KEY]: snapped }).catch(() => {});
         return snapped;
       });
-    } else if (bubble) {
-      closeBubble(bubble, 'dismissed');
     } else {
-      // One tap: open/close chat. Two quick taps: open AND start listening.
+      // A tap always reaches the chat — a bubble in the way gets dismissed
+      // on the same tap, never swallowing the interaction.
+      if (bubble) closeBubble(bubble, 'dismissed');
       const nowTs = Date.now();
       const doubleTap = nowTs - lastTap.current < 400;
       lastTap.current = nowTs;
@@ -543,7 +557,7 @@ export function Widget() {
         setChatOpen(true);
       } else if (doubleTap) {
         startListening();
-      } else {
+      } else if (!bubble) {
         setChatOpen(false);
       }
     }
@@ -592,7 +606,7 @@ export function Widget() {
                 <i className="nomi-status" aria-hidden="true" />
                 Nomi
               </span>
-              <span className="nomi-chat-sub">ON-DEVICE</span>
+              <span className="nomi-chat-sub">v{VERSION} · ON-DEVICE</span>
               <button className="nomi-chat-close" onClick={() => setChatOpen(false)} aria-label="Close chat">
                 ×
               </button>
@@ -676,7 +690,9 @@ export function Widget() {
                         ? `getting my ears ready… ${voiceStatus.pct ?? 0}%`
                         : voiceStatus.status === 'denied'
                           ? 'Mic blocked — enable it in Settings'
-                          : 'Say something…'
+                          : voiceStatus.status === 'error'
+                            ? `Voice hiccup: ${voiceStatus.message ?? 'unknown'}`
+                            : 'Say something…'
                 }
                 aria-label="Message Nomi"
               />

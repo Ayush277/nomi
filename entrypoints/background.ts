@@ -245,7 +245,7 @@ export default defineBackground(() => {
         return;
       case 'nomi:voiceStatus':
         void chrome.storage.session.set({
-          'nomi:voiceStatus': { status: msg.status, pct: msg.pct, ts: Date.now() },
+          'nomi:voiceStatus': { status: msg.status, pct: msg.pct, message: msg.message, ts: Date.now() },
         });
         return;
       case 'nomi:signal': {
