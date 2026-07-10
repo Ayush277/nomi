@@ -1,6 +1,7 @@
 import { getLinks, isRecallLinks, isSaveLink, saveLink, searchLinks } from './bag';
 import { freeChat } from './freechat';
 import { geminiChat } from './gemini';
+import { getDocs, searchDocs } from './docs';
 import { countEntries, getJournal, isCountQuery, logEntry, parseLog } from './journal';
 import { isMemoryQuery, searchMemory } from './memory';
 import { observableUrl } from './privacy';
@@ -251,10 +252,17 @@ export async function chatRespond(
   }
 
   const settings = await getSettings();
+  // Search the user's own documents first — answer from their material when
+  // it fits, before reaching for general knowledge.
+  const docHits = searchDocs(q, await getDocs());
+  const docContext = docHits.length
+    ? docHits.map((h) => `[${h.docName}] ${h.passage}`).join('\n---\n')
+    : undefined;
   const system = buildSystemPrompt({
     profile: profileNow,
     todayContext: await todayLine(now),
     screenContext,
+    docContext,
   });
   const messages = [
     ...history.slice(-8).map((m) => ({

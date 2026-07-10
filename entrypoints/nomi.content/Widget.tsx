@@ -95,16 +95,19 @@ function pickVoice(): SpeechSynthesisVoice | null {
   if (cachedVoice !== undefined) return cachedVoice;
   const voices = speechSynthesis.getVoices();
   if (voices.length === 0) return null; // not loaded yet — retry next time
-  // Prefer the softest, most natural voices — Apple's premium/Siri-class and
-  // Google's neural voices read calm and warm, not robotic.
+  const en = voices.filter((v) => v.lang.startsWith('en'));
+  // Named warm female voices, best first.
   const prefer = [
-    'Samantha', 'Ava', 'Siri', 'Serena', 'Allison', 'Zoe', 'Nicky', 'Karen',
+    'Ava', 'Samantha', 'Zoe', 'Allison', 'Serena', 'Nicky', 'Susan', 'Karen',
     'Google US English', 'Google UK English Female',
   ];
   cachedVoice =
-    voices.find((v) => v.lang.startsWith('en') && /premium|siri|neural/i.test(v.name)) ??
-    voices.find((v) => v.lang.startsWith('en') && prefer.some((p) => v.name.includes(p))) ??
-    voices.find((v) => v.lang.startsWith('en')) ??
+    // 1) a downloaded high-quality pack (macOS "Premium"/"Enhanced", neural)
+    en.find((v) => /premium|enhanced|neural/i.test(v.name) && prefer.some((p) => v.name.includes(p))) ??
+    en.find((v) => /premium|enhanced|neural/i.test(v.name)) ??
+    // 2) a good default female voice
+    en.find((v) => prefer.some((p) => v.name.includes(p))) ??
+    en[0] ??
     voices[0] ??
     null;
   return cachedVoice;
@@ -291,31 +294,12 @@ export function Widget() {
     setSpeaking(false);
   }, []);
 
-  // Speak with the best voice available: a natural Gemini female voice when
-  // connected, else the system voice. Never blocks the reply text.
+  // Speak with the best local system voice (prefers a downloaded Enhanced/
+  // Premium female pack). Gemini is used to answer & transcribe, not to talk.
   const speakSmart = useCallback(
     (text: string) => {
       stopSpeaking();
-      const fallback = () =>
-        speak(text, { onStart: () => setSpeaking(true), onEnd: () => setSpeaking(false) });
-      chrome.runtime
-        .sendMessage({ type: 'nomi:tts', text })
-        .then((res?: { audio?: string | null }) => {
-          if (!res?.audio) return fallback();
-          const a = new Audio(res.audio);
-          ttsAudio.current = a;
-          a.onplay = () => setSpeaking(true);
-          a.onended = () => {
-            setSpeaking(false);
-            ttsAudio.current = null;
-          };
-          a.onerror = () => {
-            ttsAudio.current = null;
-            fallback();
-          };
-          a.play().catch(() => fallback()); // autoplay blocked → system voice
-        })
-        .catch(fallback);
+      speak(text, { onStart: () => setSpeaking(true), onEnd: () => setSpeaking(false) });
     },
     [stopSpeaking],
   );

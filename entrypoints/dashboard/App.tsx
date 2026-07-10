@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { disconnect, syncGitHub, syncLeetCode } from '../../lib/connect';
 import { loadDashboard, type DashboardData } from '../../lib/dashboard';
+import { addDoc, getDocs, removeDoc, type NomiDoc } from '../../lib/docs';
 import { narrate } from '../../lib/narrative';
 import { formatClock, formatDuration } from '../../lib/time';
 import type { SiteCategory } from '../../lib/types';
+import { extractText } from './extract';
 
 /** Category hues — fixed order, never cycled (dataviz rule). Labelled
  * everywhere they appear, so identity is never color-alone. */
@@ -36,11 +38,40 @@ export function App() {
   const [ghUser, setGhUser] = useState('');
   const [syncing, setSyncing] = useState<string | null>(null);
   const [syncErr, setSyncErr] = useState<string | null>(null);
+  const [docs, setDocs] = useState<NomiDoc[]>([]);
+  const [docBusy, setDocBusy] = useState(false);
+  const [docErr, setDocErr] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   const reload = () => loadDashboard().then(setData);
   useEffect(() => {
     reload();
+    getDocs().then(setDocs);
   }, []);
+
+  const onUpload = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    setDocBusy(true);
+    setDocErr(null);
+    try {
+      for (const file of Array.from(files)) {
+        const { kind, text } = await extractText(file);
+        if (text.trim().length < 5) throw new Error(`Couldn't read text from "${file.name}"`);
+        await addDoc(file.name, kind, text);
+      }
+      setDocs(await getDocs());
+    } catch (e) {
+      setDocErr((e as Error).message);
+    } finally {
+      setDocBusy(false);
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  };
+
+  const forgetDoc = async (id: string) => {
+    await removeDoc(id);
+    setDocs(await getDocs());
+  };
 
   const q = query.trim().toLowerCase();
   const filtered = useMemo(() => {
@@ -113,6 +144,60 @@ export function App() {
         <Tile label="Focused" value={compact(focusMs)} accent="#14b8a6" />
         <Tile label="Problems solved" value={String(data.today.accepted.length)} accent="#e0872a" sub="today" />
         <Tile label="Day streak" value={data.streak ? `${data.streak}` : '—'} accent="#e5556e" sub="active days" />
+      </section>
+
+      <section className="space">
+        <div className="space-head">
+          <div>
+            <span className="label">Nomi Space</span>
+            <h2>Your documents — Nomi answers from these first</h2>
+            <p>
+              Upload your resume, notes, meeting docs — anything. Ask Nomi about them in chat and it
+              reads your own material before reaching for general knowledge. All kept on this device.
+            </p>
+          </div>
+          <div className="space-actions">
+            <input
+              ref={fileRef}
+              type="file"
+              multiple
+              accept=".pdf,.txt,.md,.markdown,.csv,.json,.rtf,text/*"
+              style={{ display: 'none' }}
+              onChange={(e) => onUpload(e.target.files)}
+            />
+            <button className="upload" onClick={() => fileRef.current?.click()} disabled={docBusy}>
+              {docBusy ? 'Reading…' : '+ Upload documents'}
+            </button>
+          </div>
+        </div>
+        {docErr && <p className="sync-err">{docErr}</p>}
+        {docs.length === 0 ? (
+          <div
+            className="dropzone"
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => {
+              e.preventDefault();
+              void onUpload(e.dataTransfer.files);
+            }}
+            onClick={() => fileRef.current?.click()}
+          >
+            Drop a PDF or text file here, or click to choose. Resume, notes, anything you want Nomi
+            to know.
+          </div>
+        ) : (
+          <ul className="docs">
+            {docs.map((d) => (
+              <li key={d.id}>
+                <span className="doc-ic">{d.kind === 'pdf' ? '📄' : '📝'}</span>
+                <span className="doc-name">{d.name}</span>
+                <span className="doc-meta">{(d.chars / 1000).toFixed(1)}k chars</span>
+                <button onClick={() => forgetDoc(d.id)} aria-label="Remove">
+                  Remove
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
 
       <div className="cols">

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Render the Nomi orb (DESIGN.md tokens) to public/icon/{size}.png.
-Pure stdlib — no Pillow — so anyone can regenerate icons anywhere."""
+"""Render the Nomi ball (3D glowing purple-blue glass orb with two small white
+eyes) to public/icon/{size}.png. Pure stdlib — no Pillow."""
 
 import math
 import os
@@ -10,56 +10,64 @@ import zlib
 SIZES = [16, 32, 48, 96, 128]
 OUT_DIR = os.path.join(os.path.dirname(__file__), '..', 'public', 'icon')
 
-LAVENDER = (196, 181, 253)
-TEAL = (94, 234, 212)
-EYE = (28, 28, 40)
-
 
 def lerp(a, b, t):
     return tuple(a[i] + (b[i] - a[i]) * t for i in range(3))
 
 
-def capsule_dist(px, py, cx, cy, half_h):
-    """Distance from point to a vertical segment centered at (cx, cy)."""
-    dy = max(abs(py - cy) - half_h, 0.0)
-    return math.hypot(px - cx, dy)
-
-
 def render(size):
     c = size / 2.0
-    radius = c - max(1.0, size * 0.04)
+    radius = c * 0.86
+    # eye geometry
     eye_dx = size * 0.15
-    eye_w = size * 0.045   # capsule radius
-    eye_hh = size * 0.085  # capsule half-height (minus caps)
+    eye_dy = size * 0.06
+    eye_r = max(1.0, size * 0.055)
+    # colour stops for the sphere (top-light -> deep purple-blue)
+    HILIGHT = (244, 240, 255)
+    MID = (168, 150, 255)
+    DEEP = (108, 92, 210)
+    EDGE = (86, 70, 190)
     rows = []
     for y in range(size):
         row = bytearray()
         for x in range(size):
             px, py = x + 0.5, y + 0.5
             dist = math.hypot(px - c, py - c)
-            cover = max(0.0, min(1.0, radius - dist + 0.5))
-            if cover == 0.0:
-                row += b'\x00\x00\x00\x00'
-                continue
-            # Diagonal lavender→teal gradient.
-            t = (px + py) / (2.0 * size)
-            r, g, b = lerp(LAVENDER, TEAL, t)
-            # Soft light-from-above highlight.
-            glow = max(0.0, 1.0 - math.hypot(px - c * 0.75, py - c * 0.6) / (size * 0.9))
-            r, g, b = (min(255, v + 60 * glow * glow) for v in (r, g, b))
-            # Slightly brighter rim.
-            if dist > radius - max(1.0, size * 0.05):
-                r, g, b = (min(255, v + 30) for v in (r, g, b))
-            # Eyes.
-            eye_cover = 0.0
-            for ex in (c - eye_dx, c + eye_dx):
-                d = capsule_dist(px, py, ex, c, eye_hh)
-                eye_cover = max(eye_cover, max(0.0, min(1.0, eye_w - d + 0.5)))
-            if eye_cover > 0.0:
-                r = r + (EYE[0] - r) * eye_cover
-                g = g + (EYE[1] - g) * eye_cover
-                b = b + (EYE[2] - b) * eye_cover
-            row += struct.pack('4B', int(r), int(g), int(b), int(255 * cover))
+            # soft anti-aliased alpha at the rim + a glow halo outside
+            if dist <= radius:
+                cover = min(1.0, radius - dist + 0.8)
+                alpha = 235 * cover
+                # sphere shading: light from top-left (~34%,30%)
+                lx, ly = c - radius * 0.32, c - radius * 0.4
+                ld = math.hypot(px - lx, py - ly) / (radius * 1.7)
+                ld = max(0.0, min(1.0, ld))
+                if ld < 0.28:
+                    r, g, b = lerp(HILIGHT, MID, ld / 0.28)
+                elif ld < 0.7:
+                    r, g, b = lerp(MID, DEEP, (ld - 0.28) / 0.42)
+                else:
+                    r, g, b = lerp(DEEP, EDGE, (ld - 0.7) / 0.3)
+                # bottom inner shadow for depth
+                if py > c:
+                    sh = min(1.0, (py - c) / radius) * 0.28
+                    r, g, b = (v * (1 - sh) for v in (r, g, b))
+                # eyes (two white dots, upper-centre)
+                for ex in (c - eye_dx, c + eye_dx):
+                    ed = math.hypot(px - ex, py - (c + eye_dy))
+                    if ed < eye_r:
+                        k = min(1.0, eye_r - ed + 0.6)
+                        r = r + (255 - r) * k
+                        g = g + (255 - g) * k
+                        b = b + (255 - b) * k
+                row += struct.pack('4B', int(r), int(g), int(b), int(alpha))
+            else:
+                # glow halo fading out
+                halo = max(0.0, 1.0 - (dist - radius) / (size * 0.14))
+                if halo > 0:
+                    a = int(120 * halo * halo)
+                    row += struct.pack('4B', 150, 130, 255, a)
+                else:
+                    row += b'\x00\x00\x00\x00'
         rows.append(bytes(row))
     return rows
 

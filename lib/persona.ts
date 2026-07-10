@@ -39,8 +39,9 @@ export function buildSystemPrompt(opts: {
   profile: NomiProfile;
   todayContext: string;
   screenContext?: string;
+  docContext?: string;
 }): string {
-  const { profile, todayContext, screenContext } = opts;
+  const { profile, todayContext, screenContext, docContext } = opts;
   const persona = PERSONALITIES[profile.personality] ?? PERSONALITIES.friend;
 
   const lines = [
@@ -56,6 +57,12 @@ export function buildSystemPrompt(opts: {
     about.push('Things to remember about them: ' + profile.facts.map((f) => f.text).join('; ') + '.');
   }
   if (about.length) lines.push('About the person: ' + about.join(' '));
+
+  if (docContext) {
+    lines.push(
+      `From the user's own uploaded documents (their Nomi Space) — PREFER these when answering; quote/summarise what's here rather than guessing, and only fall back to general knowledge if the answer truly isn't in them:\n${docContext}`,
+    );
+  }
 
   lines.push(`Today so far: ${todayContext}`);
   if (screenContext) {

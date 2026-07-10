@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -n '<div className=\"cols\">\\\\|</section>\\\\s*$\\\\|<section className=\"tiles\">' entrypoints/dashboard/App.tsx)",
+      "Bash(curl -s --max-time 3 http://localhost:9335/json/list)",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); [print\\(t['type'],t['url'][:55]\\) for t in d]\")"
+    ]
+  }
+}

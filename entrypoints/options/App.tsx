@@ -320,6 +320,13 @@ export function App() {
           <strong>Gemini</strong> (needs the API key below), then answered like any message.
           Nothing is stored; audio goes to Google only for transcription.
         </p>
+        <p className="hint" style={{ marginTop: 8 }}>
+          <strong>For a natural spoken voice</strong>, download an enhanced voice pack once —
+          it's free and stays on your Mac:{' '}
+          <strong>System Settings → Accessibility → Spoken Content → System Voice → Manage Voices</strong>,
+          then get <strong>Ava, Zoe, or Samantha (Enhanced/Premium)</strong>. Nomi picks the best
+          one automatically.
+        </p>
         <label className="row">
           <span>
             <strong>Microphone</strong>
