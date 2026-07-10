@@ -115,6 +115,25 @@ interface SpeakCbs {
   onEnd?: () => void;
 }
 
+/** Chrome silently cuts speech off after ~15s, so a long reply "pauses after
+ * one sentence". Two fixes together: split into sentence-sized utterances
+ * (each short enough to never hit the cap) queued back-to-back, and a
+ * keep-alive that resumes the queue if the engine stalls. */
+let keepAlive: ReturnType<typeof setInterval> | null = null;
+function startKeepAlive() {
+  if (keepAlive) return;
+  keepAlive = setInterval(() => {
+    if (!('speechSynthesis' in window) || !speechSynthesis.speaking) {
+      if (keepAlive) clearInterval(keepAlive);
+      keepAlive = null;
+      return;
+    }
+    // Nudge Chrome so it doesn't time the utterance out mid-sentence.
+    speechSynthesis.pause();
+    speechSynthesis.resume();
+  }, 9000);
+}
+
 function speak(text: string, cbs: SpeakCbs = {}): void {
   if (!('speechSynthesis' in window)) return;
   const clean = text.replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/gu, '').trim();
@@ -122,23 +141,34 @@ function speak(text: string, cbs: SpeakCbs = {}): void {
     cbs.onEnd?.();
     return;
   }
-  const u = new SpeechSynthesisUtterance(clean);
-  const v = pickVoice();
-  if (v) u.voice = v;
-  // Softer & calmer — slower pace, natural pitch, gentle volume (Siri-like).
-  u.rate = 0.9;
-  u.pitch = 1.0;
-  u.volume = 0.8;
-  u.onstart = () => cbs.onStart?.();
-  u.onend = () => cbs.onEnd?.();
-  u.onerror = () => cbs.onEnd?.();
   speechSynthesis.cancel();
-  speechSynthesis.speak(u);
+  const v = pickVoice();
+  // Break into sentence/clause chunks; long ones split further on commas.
+  const chunks = (clean.match(/[^.!?\n]+[.!?]*/g) ?? [clean])
+    .flatMap((s) => (s.length > 160 ? s.split(/,\s*/) : [s]))
+    .map((s) => s.trim())
+    .filter(Boolean);
+  chunks.forEach((chunk, i) => {
+    const u = new SpeechSynthesisUtterance(chunk);
+    if (v) u.voice = v;
+    u.rate = 0.9; // softer & calmer
+    u.pitch = 1.0;
+    u.volume = 0.8;
+    if (i === 0) u.onstart = () => cbs.onStart?.();
+    if (i === chunks.length - 1) {
+      u.onend = () => cbs.onEnd?.();
+      u.onerror = () => cbs.onEnd?.();
+    }
+    speechSynthesis.speak(u);
+  });
+  startKeepAlive();
 }
 
 export function Widget() {
   const [pos, setPos] = useState<Pos>(DEFAULT_POS);
   const [bubble, setBubble] = useState<Bubble | null>(null);
+  const [blink, setBlink] = useState(false);
+  const [taskFx, setTaskFx] = useState<'store' | 'accept' | 'done' | null>(null);
   const [paused, setPaused] = useState(false);
   const [voiceOn, setVoiceOn] = useState(true);
   const [mood, setMood] = useState<MoodState>({ kind: 'idle' });
@@ -438,6 +468,10 @@ export function Widget() {
   // If voice is on, the focused tab reads it aloud — local system voices only.
   useEffect(() => {
     if (!bubble) return;
+    // A reminder/task surfacing → red "done / needs you" pulse.
+    if (/\b(you wanted to|you asked me to|reminder|remind you|time —|you're on)\b/i.test(bubble.text)) {
+      fireTaskFx('done');
+    }
     if (voiceOn && document.visibilityState === 'visible' && document.hasFocus()) {
       speak(bubble.text, { onStart: () => setSpeaking(true), onEnd: () => setSpeaking(false) });
     }
@@ -446,7 +480,34 @@ export function Widget() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bubble?.id]);
 
-  // Gaze: the visor drifts a few px toward the cursor — subtle parallax.
+  // Blink the little white eyes every 4–7s.
+  useEffect(() => {
+    if (reducedMotion) return;
+    let alive = true;
+    let t: ReturnType<typeof setTimeout>;
+    const loop = () => {
+      t = setTimeout(() => {
+        if (!alive) return;
+        setBlink(true);
+        setTimeout(() => setBlink(false), 150);
+        loop();
+      }, 4000 + Math.random() * 3000);
+    };
+    loop();
+    return () => {
+      alive = false;
+      clearTimeout(t);
+    };
+  }, []);
+
+  // A transient task effect that colours the aura: purple when storing,
+  // green when a task is accepted, red when one is done / needs you.
+  const fireTaskFx = useCallback((kind: 'store' | 'accept' | 'done') => {
+    setTaskFx(kind);
+    setTimeout(() => setTaskFx((k) => (k === kind ? null : k)), 2400);
+  }, []);
+
+  // Gaze: the eyes drift a few px toward the cursor — subtle parallax.
   useEffect(() => {
     if (reducedMotion) return;
     const onMove = (e: MouseEvent) => {
@@ -491,6 +552,12 @@ export function Widget() {
         if ('seeing' in (res ?? {})) setSeeing(res.seeing ?? null);
       } catch {}
       setThinking(false);
+
+      // Colour the aura by what Nomi just did with your words.
+      if (/\b(saved|stored|remember(ed)?|bag|kept it)\b/i.test(reply)) fireTaskFx('store');
+      else if (/\b(got it|on it|done|i'?ll (nudge|remind)|reminder set|next time you)\b/i.test(reply))
+        fireTaskFx('accept');
+
       if (voiceOn && document.hasFocus())
         speak(reply, { onStart: () => setSpeaking(true), onEnd: () => setSpeaking(false) });
 
@@ -860,30 +927,28 @@ export function Widget() {
           />
           <div
             ref={orbRef}
-            className={`nomi-orb${paused ? ' paused' : ''}${bubble && !chatOpen ? ' glow' : ''}${moodClass}${
-              stretching ? ' stretching' : ''
-            }${aqua ? ' aqua' : ''}${hop ? ' hop' : ''}${speaking ? ' speaking' : ''}${
-              listening ? ' listening' : ''
-            }${thinking ? ' thinking' : ''}`}
+            className={`nomi-orb${blink ? ' blink' : ''}${paused ? ' paused' : ''}${
+              bubble && !chatOpen ? ' glow' : ''
+            }${moodClass}${stretching ? ' stretching' : ''}${aqua ? ' aqua' : ''}${hop ? ' hop' : ''}${
+              speaking ? ' speaking' : ''
+            }${listening ? ' listening' : ''}${thinking ? ' thinking' : ''}${
+              taskFx ? ` fx-${taskFx}` : ''
+            }`}
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
             role="img"
             aria-label="Nomi"
           >
+            <span className="nomi-aura" aria-hidden="true" />
             {timerText ? (
               <div className="nomi-timer" aria-label={`Focus timer: ${timerText} remaining`}>
                 {timerText}
               </div>
             ) : (
-              <div className="nomi-visor" ref={eyesRef} aria-hidden="true">
-                <span className="nomi-bar" />
-                <span className="nomi-bar" />
-                <span className="nomi-bar" />
-                <span className="nomi-bar" />
-                <span className="nomi-bar" />
-                <span className="nomi-bar" />
-                <span className="nomi-bar" />
+              <div className="nomi-eyes" ref={eyesRef} aria-hidden="true">
+                <span className="nomi-eye" />
+                <span className="nomi-eye" />
               </div>
             )}
           </div>

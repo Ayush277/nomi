@@ -2,7 +2,7 @@
   "name": "nomi",
   "description": "Your digital companion that quietly understands your day.",
   "private": true,
-  "version": "0.3.2",
+  "version": "0.3.3",
   "type": "module",
   "scripts": {
     "dev": "wxt",
