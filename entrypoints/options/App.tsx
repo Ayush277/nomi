@@ -11,12 +11,14 @@ export function App() {
   const [llmStatus, setLlmStatus] = useState<'unknown' | 'checking' | 'ok' | 'missing'>('unknown');
   const [gemStatus, setGemStatus] = useState<'unknown' | 'checking' | 'ok' | 'missing'>('unknown');
   const [wipeArmed, setWipeArmed] = useState(false);
-  const [micStatus, setMicStatus] = useState<'unknown' | 'granted' | 'denied'>('unknown');
+  const [micStatus, setMicStatus] = useState<'unknown' | 'granted' | 'denied' | 'nodevice'>(
+    'unknown',
+  );
 
   useEffect(() => {
     navigator.permissions
       ?.query({ name: 'microphone' as PermissionName })
-      .then((p) => setMicStatus(p.state === 'granted' ? 'granted' : p.state === 'denied' ? 'denied' : 'unknown'))
+      .then((p) => setMicStatus(p.state === 'granted' ? 'granted' : 'unknown'))
       .catch(() => {});
   }, []);
 
@@ -25,8 +27,9 @@ export function App() {
       const s = await navigator.mediaDevices.getUserMedia({ audio: true });
       s.getTracks().forEach((t) => t.stop());
       setMicStatus('granted');
-    } catch {
-      setMicStatus('denied');
+    } catch (err) {
+      // NotFoundError → no mic hardware/OS access; NotAllowedError → blocked.
+      setMicStatus((err as Error)?.name === 'NotFoundError' ? 'nodevice' : 'denied');
     }
   };
 
@@ -213,23 +216,41 @@ export function App() {
       </section>
 
       <section>
-        <h2>Voice (local Whisper)</h2>
+        <h2>Voice</h2>
         <p className="hint">
-          Speech is transcribed <strong>on this device</strong> by a local Whisper model — your
-          audio never leaves the machine. First use downloads the model once (~40&nbsp;MB).
+          Tap the mic in Nomi's chat and speak — your clip is transcribed by{' '}
+          <strong>Gemini</strong> (needs the API key below), then answered like any message.
+          Nothing is stored; audio goes to Google only for transcription.
         </p>
         <label className="row">
           <span>
             <strong>Microphone</strong>
-            <em>Grant it once here; the mic button, double-tap, and shortcut all use it.</em>
+            <em>Grant it once here; the mic button and double-tap both use it.</em>
           </span>
           <span className="quiet-controls">
             <button onClick={enableMic}>
               {micStatus === 'granted' ? 'Microphone enabled ✓' : 'Enable microphone'}
             </button>
-            {micStatus === 'denied' && <span className="bad">Blocked by the browser</span>}
+            {micStatus === 'granted' && <span className="ok">Ready ✓</span>}
           </span>
         </label>
+        {micStatus === 'denied' && (
+          <p className="hint" style={{ color: 'rgba(252,178,178,0.95)' }}>
+            <strong>Blocked.</strong> The browser is refusing the mic. To fix it:
+            <br />1. macOS <strong>System Settings → Privacy &amp; Security → Microphone</strong> —
+            turn on your browser (Comet/Chrome).
+            <br />2. In the browser, click the <strong>🔒 / camera icon</strong> in the address bar
+            of this settings page and set Microphone to <strong>Allow</strong>.
+            <br />Then click <strong>Enable microphone</strong> again. (Voice is optional — typed
+            chat already sees your screen and works fully.)
+          </p>
+        )}
+        {micStatus === 'nodevice' && (
+          <p className="hint" style={{ color: 'rgba(252,178,178,0.95)' }}>
+            No microphone found. Check that one is connected and that the browser has mic access in
+            macOS System Settings → Privacy &amp; Security → Microphone.
+          </p>
+        )}
       </section>
 
       <section>
