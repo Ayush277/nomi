@@ -35,6 +35,7 @@ The extension makes **no network requests by default**. Two opt-in exceptions, b
 1. **Local AI (Ollama)** — Nomi talks to an Ollama server at `http://localhost:11434`, software running on your own machine. That traffic never leaves your computer.
 2. **Cloud AI (Gemini)** — if you paste your own Google API key and switch it on, your **chat messages** (plus a one-line summary of today) are sent to Google's Gemini API to generate replies. Nothing else is ever sent: not your browsing history, not your memory, not your events. Settings states this in plain words next to the toggle, and turning it off stops all cloud traffic immediately.
 3. **Free fallback chat (pollinations.ai)** — when enabled and no other chat brain can answer, your **chat messages** (and the same one-line today summary) go to the keyless pollinations.ai service. Same scope as above: chat only, never browsing data or memory. One toggle in Settings turns it off.
+4. **Voice model download** — the first time you use voice input, the extension downloads the Whisper speech model (~40 MB) from HuggingFace's CDN, once. Your **audio never leaves the device**: recording and transcription happen locally. The optional "Hey Nomi" wake word keeps the microphone open locally for its name; it is off by default and one toggle away from off again.
 
 ## Permissions, and why
 

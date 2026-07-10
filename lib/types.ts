@@ -89,6 +89,8 @@ export interface NomiSettings {
   };
   /** Keyless free cloud chat fallback — used only when Gemini/Ollama can't answer. */
   freeChat: boolean;
+  /** Hands-free "Hey Nomi" wake word (local Whisper; mic stays on-device). */
+  voiceWake: boolean;
 }
 
 export const DEFAULT_SETTINGS: NomiSettings = {
@@ -109,6 +111,7 @@ export const DEFAULT_SETTINGS: NomiSettings = {
   },
   /** Keyless free cloud fallback (pollinations.ai) so chat never dead-ends. */
   freeChat: true,
+  voiceWake: false,
 };
 
 /** Widget mood, set by the background, rendered by every tab's orb. */

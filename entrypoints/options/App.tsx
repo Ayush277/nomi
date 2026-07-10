@@ -11,6 +11,24 @@ export function App() {
   const [llmStatus, setLlmStatus] = useState<'unknown' | 'checking' | 'ok' | 'missing'>('unknown');
   const [gemStatus, setGemStatus] = useState<'unknown' | 'checking' | 'ok' | 'missing'>('unknown');
   const [wipeArmed, setWipeArmed] = useState(false);
+  const [micStatus, setMicStatus] = useState<'unknown' | 'granted' | 'denied'>('unknown');
+
+  useEffect(() => {
+    navigator.permissions
+      ?.query({ name: 'microphone' as PermissionName })
+      .then((p) => setMicStatus(p.state === 'granted' ? 'granted' : p.state === 'denied' ? 'denied' : 'unknown'))
+      .catch(() => {});
+  }, []);
+
+  const enableMic = async () => {
+    try {
+      const s = await navigator.mediaDevices.getUserMedia({ audio: true });
+      s.getTracks().forEach((t) => t.stop());
+      setMicStatus('granted');
+    } catch {
+      setMicStatus('denied');
+    }
+  };
 
   useEffect(() => {
     getSettings().then((s) => {
@@ -192,6 +210,40 @@ export function App() {
             {wipeArmed ? 'Click again to erase everything' : 'Erase everything Nomi remembers'}
           </button>
         </div>
+      </section>
+
+      <section>
+        <h2>Voice (local Whisper)</h2>
+        <p className="hint">
+          Speech is transcribed <strong>on this device</strong> by a local Whisper model — your
+          audio never leaves the machine. First use downloads the model once (~40&nbsp;MB).
+        </p>
+        <label className="row">
+          <span>
+            <strong>Microphone</strong>
+            <em>Grant it once here; the popup, shortcut, and wake word all use it.</em>
+          </span>
+          <span className="quiet-controls">
+            <button onClick={enableMic}>
+              {micStatus === 'granted' ? 'Microphone enabled ✓' : 'Enable microphone'}
+            </button>
+            {micStatus === 'denied' && <span className="bad">Blocked by the browser</span>}
+          </span>
+        </label>
+        <label className="row">
+          <span>
+            <strong>"Hey Nomi" — hands-free</strong>
+            <em>
+              Keeps the mic open locally and listens for its name. Speaking while Nomi talks
+              interrupts it. Uses some CPU while on.
+            </em>
+          </span>
+          <input
+            type="checkbox"
+            checked={settings.voiceWake}
+            onChange={(e) => update({ voiceWake: e.target.checked })}
+          />
+        </label>
       </section>
 
       <section>

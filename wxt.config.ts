@@ -20,8 +20,12 @@ export default defineConfig({
     description: 'Your digital companion that quietly understands your day.',
     // tabs/idle/alarms/storage: the minimum needed for site awareness (ADR-5 Tier 1).
     // <all_urls> is required so the companion widget can live on every page (ADR-1).
-    permissions: ['storage', 'tabs', 'idle', 'alarms'],
+    permissions: ['storage', 'tabs', 'idle', 'alarms', 'offscreen'],
     host_permissions: ['<all_urls>'],
+    // onnxruntime (local Whisper) needs wasm in extension pages.
+    content_security_policy: {
+      extension_pages: "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';",
+    },
     commands: {
       'talk-to-nomi': {
         suggested_key: { default: 'Alt+Shift+N' },

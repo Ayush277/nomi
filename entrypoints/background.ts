@@ -1,7 +1,7 @@
 import { ADAPTER_DOMAINS, validateSignal } from '../lib/adapters';
 import { chatRespond, polishStory } from '../lib/chat';
 import { EMPTY_NUDGE_STATE, runNudgeEngine, type NudgeState } from '../lib/nudges/engine';
-import { categorize } from '../lib/privacy';
+import { categorize, observableUrl } from '../lib/privacy';
 import { buildRollup } from '../lib/rollup';
 import { getSettings } from '../lib/settings';
 import {
@@ -34,6 +34,56 @@ const EVENING_HOUR = 21;
 async function activeTabUrl(): Promise<{ url: string | null; tabId: number | null }> {
   const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
   return { url: tab?.url ?? null, tabId: tab?.id ?? null };
+}
+
+/** Live "what's on screen" line for chat grounding — domain + page title
+ * from the tabs API. Ephemeral: used in the prompt, never stored. */
+async function screenContext(): Promise<string | undefined> {
+  const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  if (!tab?.url) return undefined;
+  const clean = observableUrl(tab.url, (await getSettings()).exclusions);
+  if (!clean) return undefined; // sensitive/excluded pages stay invisible, even to chat
+  const title = (tab.title ?? '').slice(0, 120);
+  return `${clean.domain}${clean.path}${title ? ` — "${title}"` : ''}`;
+}
+
+// ---- voice engine (offscreen document with local Whisper) -----------------
+
+async function ensureOffscreen(): Promise<void> {
+  const contexts = await chrome.runtime.getContexts({
+    contextTypes: ['OFFSCREEN_DOCUMENT' as chrome.runtime.ContextType],
+  });
+  if (contexts.length > 0) return;
+  await chrome.offscreen.createDocument({
+    url: 'offscreen.html',
+    reasons: ['USER_MEDIA' as chrome.offscreen.Reason],
+    justification: 'Local (on-device) Whisper voice input for the companion',
+  });
+}
+
+async function setWakeMode(enabled: boolean): Promise<void> {
+  if (enabled) await ensureOffscreen();
+  void chrome.runtime.sendMessage({ type: 'nomi:offscreen:wake', enabled }).catch(() => {});
+}
+
+/** A spoken sentence went through Whisper — run it through the same chat
+ * brain and put both sides into the shared history so every widget sees it. */
+async function handleVoiceText(text: string): Promise<void> {
+  const t = text.trim();
+  if (!t) {
+    await showBubble("I didn't catch that — say it once more?");
+    return;
+  }
+  const { 'nomi:chatHistory': history = [] } = await chrome.storage.session.get('nomi:chatHistory');
+  const withUser = [...history, { role: 'user', text: t, ts: Date.now() }];
+  await chrome.storage.session.set({ 'nomi:chatHistory': withUser });
+  const reply = await chatRespond(t, history, await screenContext()).catch(
+    () => 'Glitched on my side — say that again?',
+  );
+  await chrome.storage.session.set({
+    'nomi:chatHistory': [...withUser, { role: 'nomi', text: reply, ts: Date.now() }],
+  });
+  await showBubble(reply);
 }
 
 async function syncToActiveTab(): Promise<void> {
@@ -162,13 +212,42 @@ export default defineBackground(() => {
       case 'nomi:chat':
         // The widget must ALWAYS get an answer — a swallowed error here
         // reads as Nomi ignoring the user, which is the one unforgivable bug.
-        void chatRespond(String(msg.text ?? ''), msg.history ?? [])
+        void screenContext()
+          .catch(() => undefined)
+          .then((screen) => chatRespond(String(msg.text ?? ''), msg.history ?? [], screen))
           .catch((err) => {
             console.error('[nomi] chat error:', err);
             return `Something glitched on my side (${err instanceof Error ? err.message : 'unknown'}). Say that again?`;
           })
           .then((text) => sendResponse({ text }));
         return true;
+      case 'nomi:listenOnce':
+        void ensureOffscreen()
+          .then(() => chrome.runtime.sendMessage({ type: 'nomi:offscreen:listenOnce' }))
+          .catch(() => {
+            void chrome.storage.session.set({
+              'nomi:voiceStatus': { status: 'error', ts: Date.now() },
+            });
+          });
+        return;
+      case 'nomi:voiceText':
+        void handleVoiceText(String(msg.text ?? ''));
+        return;
+      case 'nomi:wakeHeard':
+        void chrome.storage.session.set({
+          'nomi:voiceStatus': { status: 'listening', ts: Date.now() },
+        });
+        void showBubble("Yes? I'm listening…");
+        return;
+      case 'nomi:userSpeaking':
+        // Barge-in: the human is talking — every tab's TTS goes quiet.
+        void chrome.storage.session.set({ 'nomi:ttsStop': Date.now() });
+        return;
+      case 'nomi:voiceStatus':
+        void chrome.storage.session.set({
+          'nomi:voiceStatus': { status: msg.status, pct: msg.pct, ts: Date.now() },
+        });
+        return;
       case 'nomi:signal': {
         const signal = validateSignal(msg);
         if (signal) {
@@ -184,7 +263,7 @@ export default defineBackground(() => {
                   await chrome.storage.session.set({
                     'nomi:mood': {
                       kind: 'celebrate',
-                      until: Date.now() + 12000,
+                      until: Date.now() + 18000,
                       flavor: flame ? 'flame' : 'electric',
                     },
                   });
@@ -268,7 +347,7 @@ export default defineBackground(() => {
       const { 'nomi:focusSession': fs } = await chrome.storage.local.get('nomi:focusSession');
       await chrome.storage.local.remove('nomi:focusSession');
       await chrome.storage.session.set({
-        'nomi:mood': { kind: 'celebrate', until: Date.now() + 9000, flavor: 'electric' },
+        'nomi:mood': { kind: 'celebrate', until: Date.now() + 14000, flavor: 'electric' },
       });
       await showBubble(
         `Time — ${fs?.minutes ?? 'the'} minutes of heads-down, done. Shake it out?`,
@@ -322,5 +401,20 @@ export default defineBackground(() => {
   chrome.runtime.onStartup.addListener(async () => {
     await compactPastDays();
     await syncToActiveTab();
+    if ((await getSettings()).voiceWake) await setWakeMode(true);
+  });
+
+  // Wake-word mode follows the settings toggle live.
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === 'local' && changes['nomi:settings']) {
+      const before = Boolean(changes['nomi:settings'].oldValue?.voiceWake);
+      const after = Boolean(changes['nomi:settings'].newValue?.voiceWake);
+      if (before !== after) void setWakeMode(after);
+    }
+  });
+
+  // If wake mode was on when the worker last died, revive it.
+  void getSettings().then((s) => {
+    if (s.voiceWake) void setWakeMode(true);
   });
 });

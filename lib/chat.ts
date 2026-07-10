@@ -44,7 +44,11 @@ export async function polishStory(story: string): Promise<string> {
   }
 }
 
-export async function chatRespond(text: string, history: ChatMessage[]): Promise<string> {
+export async function chatRespond(
+  text: string,
+  history: ChatMessage[],
+  screenContext?: string,
+): Promise<string> {
   let q = text.trim();
   const now = Date.now();
 
@@ -126,7 +130,7 @@ export async function chatRespond(text: string, history: ChatMessage[]): Promise
   }
 
   const settings = await getSettings();
-  const system = personaPrompt(await todayLine(now));
+  const system = personaPrompt(await todayLine(now), screenContext);
   const messages = [
     ...history.slice(-8).map((m) => ({
       role: m.role === 'nomi' ? ('assistant' as const) : ('user' as const),

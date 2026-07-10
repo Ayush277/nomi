@@ -49,19 +49,30 @@ const GAZE_TRAVEL_PX = 4;
 const reducedMotion =
   typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-type SpeechRecognitionCtor = new () => {
-  lang: string;
-  interimResults: boolean;
-  maxAlternatives: number;
-  onresult: ((e: { results: { [i: number]: { [j: number]: { transcript: string } } } }) => void) | null;
-  onerror: (() => void) | null;
-  onend: (() => void) | null;
-  start: () => void;
-  stop: () => void;
-};
-
-const SpeechRec: SpeechRecognitionCtor | undefined =
-  (globalThis as any).SpeechRecognition ?? (globalThis as any).webkitSpeechRecognition;
+/** Soft two-note chime for focus timers — WebAudio, quiet by design. */
+function chime(kind: 'start' | 'end'): void {
+  try {
+    const ac = new AudioContext();
+    const notes = kind === 'start' ? [523.25, 659.25] : [659.25, 523.25, 783.99];
+    let t = ac.currentTime + 0.02;
+    for (const freq of notes) {
+      const osc = ac.createOscillator();
+      const gain = ac.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0, t);
+      gain.gain.linearRampToValueAtTime(0.05, t + 0.03);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.32);
+      osc.connect(gain).connect(ac.destination);
+      osc.start(t);
+      osc.stop(t + 0.35);
+      t += 0.15;
+    }
+    setTimeout(() => void ac.close(), 1500);
+  } catch {
+    // audio blocked — silence is fine
+  }
+}
 
 /** Soft, warm delivery: prefer the natural system voices, strip emoji,
  * slow down a touch. Voices load async, so re-pick until they exist. */
@@ -106,7 +117,9 @@ export function Widget() {
   const [mood, setMood] = useState<MoodState>({ kind: 'idle' });
   const [chatOpen, setChatOpen] = useState(false);
   const [dragging, setDragging] = useState(false);
-  const [listening, setListening] = useState(false);
+  const [voiceStatus, setVoiceStatus] = useState<{ status: string; pct?: number }>({
+    status: 'idle',
+  });
   const [docked, setDocked] = useState(false);
   const [peeking, setPeeking] = useState(false);
   const [stretching, setStretching] = useState(false);
@@ -131,7 +144,7 @@ export function Widget() {
     const cy = H / 2;
     const colors = FX_COLORS[kind];
     const parts: FxParticle[] = [];
-    const count = kind === 'water' ? 22 : 34;
+    const count = kind === 'water' ? 22 : 52;
     for (let i = 0; i < count; i++) {
       const a = Math.random() * Math.PI * 2;
       const sp = kind === 'water' ? 0.6 + Math.random() * 1.4 : 2 + Math.random() * 4.5;
@@ -141,14 +154,14 @@ export function Widget() {
         vx: Math.cos(a) * sp * (kind === 'water' ? 0.3 : 1),
         vy: kind === 'water' ? 0.8 + Math.random() * 1.6 : Math.sin(a) * sp - (kind === 'flame' ? 1.6 : 0),
         life: 1,
-        decay: 0.012 + Math.random() * 0.02,
-        r: 1.5 + Math.random() * 2.4,
+        decay: kind === 'water' ? 0.012 + Math.random() * 0.02 : 0.006 + Math.random() * 0.011,
+        r: 1.6 + Math.random() * 2.6,
         color: colors[i % colors.length],
       });
     }
     const bolts: FxBolt[] =
       kind === 'electric'
-        ? [0, 1, 2].map(() => ({ angle: Math.random() * Math.PI * 2, life: 1 }))
+        ? [0, 1, 2, 3].map(() => ({ angle: Math.random() * Math.PI * 2, life: 1 }))
         : [];
 
     cancelAnimationFrame(fxRaf.current);
@@ -157,7 +170,7 @@ export function Widget() {
       ctx.globalCompositeOperation = 'lighter';
       for (const b of bolts) {
         if (b.life <= 0) continue;
-        b.life -= 0.07;
+        b.life -= 0.045;
         if (Math.random() < 0.4) b.angle += (Math.random() - 0.5) * 0.6;
         ctx.strokeStyle = `rgba(200,220,255,${Math.max(b.life, 0)})`;
         ctx.lineWidth = 1.6;
@@ -187,7 +200,7 @@ export function Widget() {
           p.vy *= 0.96;
         }
         p.life -= p.decay;
-        ctx.shadowBlur = 10;
+        ctx.shadowBlur = 16;
         ctx.shadowColor = p.color;
         ctx.fillStyle = p.color;
         ctx.globalAlpha = Math.max(p.life, 0);
@@ -210,8 +223,10 @@ export function Widget() {
   const orbRef = useRef<HTMLDivElement>(null);
   const eyesRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
-  const recRef = useRef<InstanceType<SpeechRecognitionCtor> | null>(null);
+  const prevFocus = useRef<{ until: number } | null>(null);
   const drag = useRef<{ startX: number; startY: number; origin: Pos; moved: boolean } | null>(null);
+
+  const listening = voiceStatus.status === 'listening';
 
   // Initial state + follow changes from background/settings.
   useEffect(() => {
@@ -237,6 +252,13 @@ export function Widget() {
       if (area === 'session' && changes[BUBBLE_KEY]) setBubble(changes[BUBBLE_KEY].newValue ?? null);
       if (area === 'session' && changes[CHAT_KEY]) setMessages(changes[CHAT_KEY].newValue ?? []);
       if (area === 'session' && changes[MOOD_KEY]?.newValue) setMood(changes[MOOD_KEY].newValue);
+      if (area === 'session' && changes['nomi:voiceStatus']?.newValue) {
+        const vs = changes['nomi:voiceStatus'].newValue;
+        setVoiceStatus(vs);
+        // Nomi yields the floor the moment the human is being heard.
+        if (vs.status === 'listening') speechSynthesis?.cancel();
+      }
+      if (area === 'session' && changes['nomi:ttsStop']) speechSynthesis?.cancel();
       if (area === 'session' && changes[OPEN_CHAT_KEY]?.newValue) {
         // Keyboard shortcut: only the tab the user is looking at responds.
         if (document.visibilityState === 'visible' && document.hasFocus()) {
@@ -339,6 +361,7 @@ export function Widget() {
     const onVis = () => {
       if (document.visibilityState === 'hidden') {
         hiddenAt = Date.now();
+        speechSynthesis?.cancel(); // switched away — stop talking mid-sentence
       } else if (hiddenAt && Date.now() - hiddenAt > 20 * 60000) {
         setHop(true);
         setTimeout(() => setHop(false), 1600);
@@ -439,46 +462,32 @@ export function Widget() {
     [messages, thinking, voiceOn],
   );
 
+  // Voice input runs through the extension's own ears: local Whisper in an
+  // offscreen document. Works in any Chromium browser — no Google service.
   const startListening = useCallback(() => {
-    if (!SpeechRec) {
-      setChatOpen(true);
-      setMessages((prev) => {
-        if (prev[prev.length - 1]?.text.includes('voice input')) return prev;
-        return [
-          ...prev,
-          {
-            role: 'nomi',
-            text: "This browser doesn't ship speech recognition, so voice input can't work here — but type away, I'm listening either way. (In Chrome, double-tap me and I'll just listen.)",
-            ts: Date.now(),
-          },
-        ];
-      });
-      return;
+    setChatOpen(true);
+    speechSynthesis?.cancel();
+    void chrome.runtime.sendMessage({ type: 'nomi:listenOnce' }).catch(() => {});
+  }, []);
+
+  // Focus timer chimes: soft note at the start, soft resolve at the end.
+  useEffect(() => {
+    const now = Date.now();
+    const live = focusSess && focusSess.until > now ? focusSess : null;
+    const prev = prevFocus.current;
+    if (document.visibilityState === 'visible' && document.hasFocus()) {
+      if (live && !prev) chime('start');
+      if (!live && prev && prev.until <= now + 3000) chime('end');
     }
-    if (recRef.current) return; // already listening
-    const rec = new SpeechRec();
-    recRef.current = rec;
-    rec.lang = navigator.language || 'en-US';
-    rec.interimResults = false;
-    rec.maxAlternatives = 1;
-    rec.onresult = (e) => {
-      const transcript = e.results[0]?.[0]?.transcript?.trim();
-      if (transcript) void send(transcript);
-    };
-    rec.onerror = () => setListening(false);
-    rec.onend = () => {
-      recRef.current = null;
-      setListening(false);
-    };
-    setListening(true);
-    try {
-      rec.start();
-    } catch {
-      recRef.current = null;
-      setListening(false);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [send]);
+    prevFocus.current = live;
+  }, [focusSess]);
+
+  // Tick every second while a focus timer runs — the orb face IS the timer.
+  useEffect(() => {
+    if (!focusSess || focusSess.until <= Date.now()) return;
+    const t = setInterval(() => setClockTick((n) => n + 1), 1000);
+    return () => clearInterval(t);
+  }, [focusSess]);
 
   const clampPos = (p: Pos): Pos => ({
     right: Math.min(Math.max(p.right, 8), Math.max(window.innerWidth - 140, 8)),
@@ -543,8 +552,23 @@ export function Widget() {
 
   const moodClass =
     mood.kind === 'celebrate' ? ' celebrate' : mood.kind === 'focus' ? ' focusing' : '';
+  const focusLive = focusSess && focusSess.until > Date.now() ? focusSess : null;
+  const timerText = focusLive
+    ? (() => {
+        const left = Math.max(0, focusLive.until - Date.now());
+        const m = Math.floor(left / 60000);
+        const s = Math.floor((left % 60000) / 1000);
+        return `${m}:${String(s).padStart(2, '0')}`;
+      })()
+    : null;
   const tucked =
-    docked && !chatOpen && !bubble && !listening && mood.kind !== 'celebrate' && !dragging;
+    docked &&
+    !chatOpen &&
+    !bubble &&
+    !listening &&
+    !focusLive &&
+    mood.kind !== 'celebrate' &&
+    !dragging;
 
   return (
     <div className={`nomi-root${reducedMotion ? ' reduced' : ''}`}>
@@ -643,15 +667,25 @@ export function Widget() {
               <input
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
-                placeholder={listening ? 'Listening…' : 'Say something…'}
+                placeholder={
+                  listening
+                    ? 'Listening…'
+                    : voiceStatus.status === 'transcribing'
+                      ? 'Heard you — thinking…'
+                      : voiceStatus.status === 'progress' || voiceStatus.status === 'loading'
+                        ? `getting my ears ready… ${voiceStatus.pct ?? 0}%`
+                        : voiceStatus.status === 'denied'
+                          ? 'Mic blocked — enable it in Settings'
+                          : 'Say something…'
+                }
                 aria-label="Message Nomi"
               />
               <button
                 type="button"
                 className={`nomi-mic${listening ? ' live' : ''}`}
                 aria-label="Voice input"
-                title="Voice input (Alt+Shift+N from anywhere)"
-                onClick={() => (listening ? recRef.current?.stop() : startListening())}
+                title="Voice input — local Whisper (Alt+Shift+N from anywhere)"
+                onClick={startListening}
               >
                 ●
               </button>
@@ -678,10 +712,16 @@ export function Widget() {
             role="img"
             aria-label="Nomi companion"
           >
-            <div className="nomi-eyes" ref={eyesRef}>
-              <div className="nomi-eye" />
-              <div className="nomi-eye" />
-            </div>
+            {timerText ? (
+              <div className="nomi-timer" aria-label={`Focus timer: ${timerText} remaining`}>
+                {timerText}
+              </div>
+            ) : (
+              <div className="nomi-eyes" ref={eyesRef}>
+                <div className="nomi-eye" />
+                <div className="nomi-eye" />
+              </div>
+            )}
           </div>
         </div>
       </div>
