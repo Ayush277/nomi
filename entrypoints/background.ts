@@ -1,5 +1,6 @@
 import { ADAPTER_DOMAINS, validateSignal } from '../lib/adapters';
 import { chatRespond, polishStory } from '../lib/chat';
+import { geminiTranscribe } from '../lib/gemini';
 import { EMPTY_NUDGE_STATE, runNudgeEngine, type NudgeState } from '../lib/nudges/engine';
 import { categorize, observableUrl } from '../lib/privacy';
 import { buildRollup } from '../lib/rollup';
@@ -59,11 +60,6 @@ async function ensureOffscreen(): Promise<void> {
     reasons: ['USER_MEDIA' as chrome.offscreen.Reason],
     justification: 'Local (on-device) Whisper voice input for the companion',
   });
-}
-
-async function setWakeMode(enabled: boolean): Promise<void> {
-  if (enabled) await ensureOffscreen();
-  void chrome.runtime.sendMessage({ type: 'nomi:offscreen:wake', enabled }).catch(() => {});
 }
 
 /** A spoken sentence went through Whisper — run it through the same chat
@@ -233,11 +229,42 @@ export default defineBackground(() => {
       case 'nomi:voiceText':
         void handleVoiceText(String(msg.text ?? ''));
         return;
-      case 'nomi:wakeHeard':
-        void chrome.storage.session.set({
-          'nomi:voiceStatus': { status: 'listening', ts: Date.now() },
-        });
-        void showBubble("Yes? I'm listening…");
+      case 'nomi:voiceAudio':
+        // Recorded clip from the offscreen mic → transcribe with the user's
+        // Gemini key → straight into the normal chat flow.
+        void (async () => {
+          const settings = await getSettings();
+          if (!settings.gemini.apiKey.trim()) {
+            await chrome.storage.session.set({
+              'nomi:voiceStatus': {
+                status: 'error',
+                message: 'Voice needs the Gemini key (Settings → Cloud AI).',
+                ts: Date.now(),
+              },
+            });
+            return;
+          }
+          try {
+            const text = await geminiTranscribe({
+              apiKey: settings.gemini.apiKey.trim(),
+              model: settings.gemini.model,
+              b64: String(msg.b64 ?? ''),
+              mime: String(msg.mime ?? 'audio/webm'),
+            });
+            await chrome.storage.session.set({
+              'nomi:voiceStatus': { status: 'idle', ts: Date.now() },
+            });
+            await handleVoiceText(text);
+          } catch (err) {
+            await chrome.storage.session.set({
+              'nomi:voiceStatus': {
+                status: 'error',
+                message: `transcription failed (${err instanceof Error ? err.message : 'unknown'})`,
+                ts: Date.now(),
+              },
+            });
+          }
+        })();
         return;
       case 'nomi:userSpeaking':
         // Barge-in: the human is talking — every tab's TTS goes quiet.
@@ -401,20 +428,5 @@ export default defineBackground(() => {
   chrome.runtime.onStartup.addListener(async () => {
     await compactPastDays();
     await syncToActiveTab();
-    if ((await getSettings()).voiceWake) await setWakeMode(true);
-  });
-
-  // Wake-word mode follows the settings toggle live.
-  chrome.storage.onChanged.addListener((changes, area) => {
-    if (area === 'local' && changes['nomi:settings']) {
-      const before = Boolean(changes['nomi:settings'].oldValue?.voiceWake);
-      const after = Boolean(changes['nomi:settings'].newValue?.voiceWake);
-      if (before !== after) void setWakeMode(after);
-    }
-  });
-
-  // If wake mode was on when the worker last died, revive it.
-  void getSettings().then((s) => {
-    if (s.voiceWake) void setWakeMode(true);
   });
 });

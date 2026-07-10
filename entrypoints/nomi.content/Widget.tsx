@@ -625,6 +625,21 @@ export function Widget() {
               ))}
               {thinking && <div className="nomi-msg nomi nomi-thinking">…</div>}
             </div>
+            {voiceStatus.status !== 'idle' && voiceStatus.status !== 'booted' && (
+              <div
+                className={`nomi-voice-note${
+                  voiceStatus.status === 'error' || voiceStatus.status === 'denied' ? ' bad' : ''
+                }`}
+              >
+                {listening
+                  ? '● Listening — speak now'
+                  : voiceStatus.status === 'transcribing'
+                    ? 'Heard you — thinking…'
+                    : voiceStatus.status === 'denied'
+                      ? 'Microphone blocked. Settings → Voice → Enable microphone, then try again.'
+                      : `Voice failed: ${voiceStatus.message ?? 'unknown'}`}
+              </div>
+            )}
             {(() => {
               const nowTs = Date.now();
               const minsLeft = (t: number) => Math.max(1, Math.ceil((t - nowTs) / 60000));
@@ -686,13 +701,7 @@ export function Widget() {
                     ? 'Listening…'
                     : voiceStatus.status === 'transcribing'
                       ? 'Heard you — thinking…'
-                      : voiceStatus.status === 'progress' || voiceStatus.status === 'loading'
-                        ? `getting my ears ready… ${voiceStatus.pct ?? 0}%`
-                        : voiceStatus.status === 'denied'
-                          ? 'Mic blocked — enable it in Settings'
-                          : voiceStatus.status === 'error'
-                            ? `Voice hiccup: ${voiceStatus.message ?? 'unknown'}`
-                            : 'Say something…'
+                      : 'Say something…'
                 }
                 aria-label="Message Nomi"
               />

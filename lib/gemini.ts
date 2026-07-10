@@ -46,6 +46,49 @@ export async function geminiChat(opts: {
   }
 }
 
+/** Speech-to-text via Gemini's audio input: the recorded clip is sent once,
+ * transcribed, and the reply is just the transcript. */
+export async function geminiTranscribe(opts: {
+  apiKey: string;
+  model: string;
+  b64: string;
+  mime: string;
+}): Promise<string> {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 25000);
+  try {
+    const res = await fetch(`${BASE}/${encodeURIComponent(opts.model)}:generateContent`, {
+      method: 'POST',
+      signal: ctrl.signal,
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': opts.apiKey },
+      body: JSON.stringify({
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              {
+                text: 'Transcribe this speech exactly as spoken. Reply with ONLY the transcript text — no quotes, no commentary. If there is no intelligible speech, reply with an empty response.',
+              },
+              { inlineData: { mimeType: opts.mime, data: opts.b64 } },
+            ],
+          },
+        ],
+        generationConfig: { maxOutputTokens: 200, temperature: 0 },
+      }),
+    });
+    if (!res.ok) throw new Error(`gemini ${res.status}`);
+    const json = await res.json();
+    return (
+      json?.candidates?.[0]?.content?.parts
+        ?.map((p: { text?: string }) => p.text ?? '')
+        .join('')
+        .trim() ?? ''
+    );
+  } finally {
+    clearTimeout(t);
+  }
+}
+
 /** Cheap connectivity/key check for the Settings test button. */
 export async function geminiAvailable(apiKey: string, model: string): Promise<boolean> {
   try {

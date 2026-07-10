@@ -221,7 +221,7 @@ export function App() {
         <label className="row">
           <span>
             <strong>Microphone</strong>
-            <em>Grant it once here; the popup, shortcut, and wake word all use it.</em>
+            <em>Grant it once here; the mic button, double-tap, and shortcut all use it.</em>
           </span>
           <span className="quiet-controls">
             <button onClick={enableMic}>
@@ -229,20 +229,6 @@ export function App() {
             </button>
             {micStatus === 'denied' && <span className="bad">Blocked by the browser</span>}
           </span>
-        </label>
-        <label className="row">
-          <span>
-            <strong>"Hey Nomi" — hands-free</strong>
-            <em>
-              Keeps the mic open locally and listens for its name. Speaking while Nomi talks
-              interrupts it. Uses some CPU while on.
-            </em>
-          </span>
-          <input
-            type="checkbox"
-            checked={settings.voiceWake}
-            onChange={(e) => update({ voiceWake: e.target.checked })}
-          />
         </label>
       </section>
 
