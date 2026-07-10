@@ -1,36 +1,37 @@
-/* Nomi dashboard — the local second brain. Premium glass, theme-aware. */
+/* Nomi dashboard — serene blue glassmorphism. Frosted panels, soft blue
+   shadows, calm gradients. Theme-aware (light serene blue / deep night blue). */
 
 :root {
-  --paper: #fbfbfc;
-  --studio: #edecf0;
-  --ink: #17171e;
-  --ink-soft: rgba(23, 23, 30, 0.6);
-  --ink-faint: rgba(23, 23, 30, 0.4);
-  --line: rgba(23, 23, 30, 0.09);
-  --glass: rgba(255, 255, 255, 0.55);
-  --glass-edge: rgba(255, 255, 255, 0.85);
-  --lav: #8b7ae8;
-  --teal: #14b8a6;
-  --shadow: 0 12px 44px rgba(23, 23, 30, 0.08), 0 1px 3px rgba(23, 23, 30, 0.05);
-  --shadow-lg: 0 30px 80px rgba(23, 23, 30, 0.16);
+  --paper: #ffffff;
+  --studio: #d9e9fb;
+  --ink: #1e2b45;
+  --ink-soft: #5a6b8a;
+  --ink-faint: #93a3bf;
+  --line: rgba(37, 70, 140, 0.1);
+  --glass: rgba(255, 255, 255, 0.6);
+  --glass-edge: rgba(255, 255, 255, 0.9);
+  --lav: #3b82f6; /* accent = serene blue */
+  --teal: #38bdf8; /* sky */
+  --shadow: 0 14px 40px rgba(59, 110, 210, 0.14), 0 2px 6px rgba(59, 110, 210, 0.07);
+  --shadow-lg: 0 34px 80px rgba(59, 110, 210, 0.22);
   --sans: -apple-system, 'SF Pro Display', BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, monospace;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --paper: #17171f;
-    --studio: #0c0c12;
-    --ink: #f2f2f5;
-    --ink-soft: rgba(242, 242, 245, 0.6);
-    --ink-faint: rgba(242, 242, 245, 0.38);
+    --paper: rgba(30, 45, 78, 0.72);
+    --studio: #0b1830;
+    --ink: #eaf1fb;
+    --ink-soft: rgba(217, 231, 251, 0.62);
+    --ink-faint: rgba(217, 231, 251, 0.4);
     --line: rgba(255, 255, 255, 0.1);
-    --glass: rgba(255, 255, 255, 0.05);
-    --glass-edge: rgba(255, 255, 255, 0.14);
-    --lav: #c4b5fd;
-    --teal: #5eead4;
-    --shadow: 0 12px 44px rgba(0, 0, 0, 0.35), 0 1px 3px rgba(0, 0, 0, 0.3);
-    --shadow-lg: 0 30px 80px rgba(0, 0, 0, 0.5);
+    --glass: rgba(255, 255, 255, 0.06);
+    --glass-edge: rgba(255, 255, 255, 0.15);
+    --lav: #60a5fa;
+    --teal: #7dd3fc;
+    --shadow: 0 14px 44px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.3);
+    --shadow-lg: 0 34px 80px rgba(0, 0, 0, 0.55);
   }
 }
 
@@ -38,15 +39,25 @@
 
 body {
   background:
-    radial-gradient(120% 70% at 12% 0%, color-mix(in srgb, var(--lav) 14%, transparent), transparent 55%),
-    radial-gradient(110% 60% at 92% 100%, color-mix(in srgb, var(--teal) 12%, transparent), transparent 55%),
-    var(--studio);
+    radial-gradient(120% 80% at 8% -5%, #eaf4ff, transparent 55%),
+    radial-gradient(90% 70% at 100% 0%, #cfe3fb, transparent 50%),
+    radial-gradient(120% 90% at 60% 110%, #d6e8fc, transparent 60%),
+    linear-gradient(160deg, #dcecfd 0%, #cfe2fa 60%, #c6dcf7 100%);
   color: var(--ink);
   font-family: var(--sans);
   font-size: 15px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   min-height: 100vh;
+}
+
+@media (prefers-color-scheme: dark) {
+  body {
+    background:
+      radial-gradient(120% 80% at 8% -5%, #14294b, transparent 55%),
+      radial-gradient(90% 70% at 100% 0%, #0f2647, transparent 50%),
+      linear-gradient(160deg, #0d1c38 0%, #0a1730 100%);
+  }
 }
 
 .loading {
@@ -59,25 +70,33 @@ body {
 }
 
 .orb-lg {
-  width: 64px;
-  height: 64px;
-  border-radius: 999px;
+  width: 62px;
+  height: 62px;
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 11px;
+  gap: 12px;
   background:
-    radial-gradient(120% 120% at 32% 26%, rgba(255, 255, 255, 0.5), transparent 42%),
-    linear-gradient(135deg, color-mix(in srgb, var(--lav) 55%, transparent), color-mix(in srgb, var(--teal) 45%, transparent)),
-    var(--glass);
-  border: 1px solid var(--glass-edge);
-  border-top-color: rgba(255, 255, 255, 0.6);
-  box-shadow: var(--shadow-lg);
+    radial-gradient(circle at 36% 27%, rgba(240, 246, 255, 0.7), transparent 20%),
+    radial-gradient(circle at 46% 44%, #7fb0ff 0%, #4f86f6 48%, #3f6fe0 82%, #345fd0 100%);
+  border: 1px solid rgba(200, 220, 255, 0.6);
+  box-shadow:
+    0 0 26px rgba(80, 130, 250, 0.5),
+    0 10px 26px rgba(50, 90, 200, 0.34),
+    inset 0 -10px 18px rgba(40, 70, 160, 0.4),
+    inset 6px 8px 16px rgba(255, 255, 255, 0.45);
   animation: breathe 4s ease-in-out infinite;
 }
 
 @keyframes breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.04); } }
-.orb-lg .eye { width: 5.5px; height: 15px; border-radius: 999px; background: rgba(20, 22, 34, 0.82); }
+.orb-lg .eye {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 6px rgba(255, 255, 255, 0.9);
+}
 
 .dash { max-width: 1180px; margin: 0 auto; padding: 44px 28px 60px; }
 
