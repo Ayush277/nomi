@@ -15,6 +15,7 @@ import {
   sessionsSince,
 } from '../lib/store';
 import { computeStreak } from '../lib/streak';
+import { matchSiteReminder } from '../lib/smartreminders';
 import { todayLine, todayRollup } from '../lib/summary';
 import { narrate } from '../lib/narrative';
 import { dateKey, startOfDay } from '../lib/time';
@@ -104,6 +105,29 @@ async function handleVoiceText(text: string): Promise<void> {
 async function syncToActiveTab(): Promise<void> {
   const { url, tabId } = await activeTabUrl();
   await transitionTo(url, tabId);
+  await checkSiteReminders(url);
+}
+
+/** Context-triggered reminders (#13): the user asked to be reminded "when I
+ * open X" — fire the moment they land on X. Uses the raw hostname only (no
+ * recording), so it works even on sensitive sites like Gmail. */
+async function checkSiteReminders(rawUrl: string | null): Promise<void> {
+  if (!rawUrl) return;
+  let host: string;
+  try {
+    const u = new URL(rawUrl);
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return;
+    host = u.hostname.toLowerCase();
+  } catch {
+    return;
+  }
+  const { 'nomi:siteReminders': reminders } = await chrome.storage.local.get('nomi:siteReminders');
+  if (!reminders) return;
+  const hit = matchSiteReminder(host, reminders, Date.now());
+  if (!hit) return;
+  delete reminders[hit.id];
+  await chrome.storage.local.set({ 'nomi:siteReminders': reminders });
+  await showBubble(`You're on ${hit.reminder.domain} — you wanted to: ${hit.reminder.what}`);
 }
 
 async function showBubble(text: string, fx?: string): Promise<void> {
@@ -223,6 +247,19 @@ export default defineBackground(() => {
         void todayLine()
           .catch(() => "I'm here — just having trouble reading today's notes. Try again?")
           .then((text) => sendResponse({ text }));
+        return true;
+      case 'nomi:stats':
+        void (async () => {
+          const rollup = await todayRollup();
+          const streak = computeStreak(await allRollups(), rollup);
+          sendResponse({
+            streak,
+            codingMs: rollup.byCategory.coding ?? 0,
+            learningMs: rollup.byCategory.learning ?? 0,
+            totalMs: rollup.totalMs,
+            accepted: rollup.accepted.length,
+          });
+        })().catch(() => sendResponse(null));
         return true;
       case 'nomi:chat':
         // The widget must ALWAYS get an answer — a swallowed error here
@@ -362,6 +399,7 @@ export default defineBackground(() => {
   chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
     if (!changeInfo.url || !tab.active) return;
     await transitionTo(changeInfo.url, tabId);
+    await checkSiteReminders(changeInfo.url);
   });
 
   chrome.windows.onFocusChanged.addListener(async (windowId) => {

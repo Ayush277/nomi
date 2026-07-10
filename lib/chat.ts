@@ -1,6 +1,9 @@
+import { getLinks, isRecallLinks, isSaveLink, saveLink, searchLinks } from './bag';
 import { freeChat } from './freechat';
 import { geminiChat } from './gemini';
 import { isMemoryQuery, searchMemory } from './memory';
+import { observableUrl } from './privacy';
+import { confirmSiteReminder, parseSiteReminder } from './smartreminders';
 import { narrate } from './narrative';
 import { ollamaChat } from './ollama';
 import { buildSystemPrompt, PERSONALITIES } from './persona';
@@ -78,6 +81,23 @@ export async function chatRespond(
     );
   }
 
+  // Context-triggered reminder — "remind me when I open Gmail to …". Checked
+  // before the plain time reminder because it's the more specific shape.
+  if (/\bremind me\b/i.test(q)) {
+    const site = parseSiteReminder(q);
+    if (site) {
+      const id = crypto.randomUUID();
+      const { 'nomi:siteReminders': existing } = await chrome.storage.local.get('nomi:siteReminders');
+      await chrome.storage.local.set({
+        'nomi:siteReminders': {
+          ...(existing ?? {}),
+          [id]: { domain: site.domain, what: site.what, createdTs: now },
+        },
+      });
+      return confirmSiteReminder(site);
+    }
+  }
+
   const reminder = parseReminder(q);
   if (reminder) {
     const id = crypto.randomUUID();
@@ -90,6 +110,32 @@ export async function chatRespond(
     });
     chrome.alarms.create(`nomi:reminder:${id}`, { when: now + reminder.delayMs });
     return confirmText(reminder);
+  }
+
+  // Personal Bag — "remember this link" saves the page you're on.
+  if (isSaveLink(q)) {
+    const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+    const clean = tab?.url ? observableUrl(tab.url) : null;
+    if (!tab?.url || !clean) return "I can't save this page — it's a private or browser page.";
+    const saved = await saveLink({
+      url: tab.url.split('#')[0],
+      title: (tab.title ?? clean.domain).slice(0, 160),
+      domain: clean.domain,
+    });
+    return `Saved to your bag: "${saved.title}". Ask me for it anytime — "the link about ${saved.title.split(' ').slice(0, 2).join(' ')}".`;
+  }
+
+  // Personal Bag recall — "which link did I save about X?"
+  if (isRecallLinks(q)) {
+    const hits = searchLinks(q, await getLinks());
+    if (hits.length === 0) return "Your bag is empty so far. Say \"remember this link\" on any page.";
+    return (
+      'From your bag:\n' +
+      hits
+        .slice(0, 4)
+        .map((l) => `• ${l.title} — ${l.domain} (${new Date(l.ts).toLocaleDateString()})`)
+        .join('\n')
+    );
   }
 
   // "remember that I ..." — a fact about the person, stored forever.
@@ -143,10 +189,16 @@ export async function chatRespond(
     return 'Talk to me about anything — I can see the page you\'re on and I remember you. Try: "analyze this page" · "how\'s today going?" · "remember I\'m prepping for interviews" · "remind me to stretch in 20 min" · "focus with me for 25 minutes".';
   }
 
-  // "focus with me for 25 minutes" — Nomi holds the clock and keeps quiet.
-  const focus = q.match(/focus (?:with me )?for (\d+)\s*(minutes?|mins?|m|hours?|hrs?|h)\b/i);
+  // "focus with me for 25 minutes" / "for an hour" / "for half an hour" —
+  // fully dynamic, any duration (Core Vision #2). Nomi holds the clock.
+  const focus = q.match(
+    /focus (?:with me )?(?:for )?(\d+|an?|half an|a couple(?: of)?)\s*(minutes?|mins?|m|hours?|hrs?|h)\b/i,
+  );
   if (focus) {
-    const mins = Number(focus[1]) * (/^h/i.test(focus[2]) ? 60 : 1);
+    const isHour = /^h/i.test(focus[2]);
+    const wordNum: Record<string, number> = { a: 1, an: 1, 'half an': 0.5, 'a couple': 2, 'a couple of': 2 };
+    const qty = /^\d+$/.test(focus[1]) ? Number(focus[1]) : (wordNum[focus[1].toLowerCase()] ?? 1);
+    const mins = Math.max(1, Math.round(qty * (isHour ? 60 : 1)));
     const until = now + mins * 60000;
     await chrome.storage.local.set({ 'nomi:focusSession': { until, minutes: mins } });
     chrome.alarms.create('nomi:focusEnd', { when: until });

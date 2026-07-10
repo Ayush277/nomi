@@ -235,6 +235,13 @@ export function Widget() {
   const [profile, setProfile] = useState<NomiProfile>(DEFAULT_PROFILE);
   const [seeing, setSeeing] = useState<string | null>(null);
   const [showContext, setShowContext] = useState(false);
+  const [stats, setStats] = useState<{
+    streak: number;
+    codingMs: number;
+    learningMs: number;
+    totalMs: number;
+    accepted: number;
+  } | null>(null);
   const revealTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const orbRef = useRef<HTMLDivElement>(null);
   const eyesRef = useRef<HTMLDivElement>(null);
@@ -260,6 +267,13 @@ export function Widget() {
       .get(PROFILE_KEY)
       .then((s) => s[PROFILE_KEY] && setProfile({ ...DEFAULT_PROFILE, ...s[PROFILE_KEY] }))
       .catch(() => {});
+    const loadStats = () =>
+      chrome.runtime
+        .sendMessage({ type: 'nomi:stats' })
+        .then((s) => s && setStats(s))
+        .catch(() => {});
+    loadStats();
+    const statsTimer = setInterval(loadStats, 60000);
     chrome.storage.session
       .get([BUBBLE_KEY, CHAT_KEY, MOOD_KEY])
       .then((stored) => {
@@ -303,6 +317,7 @@ export function Widget() {
     };
     chrome.storage.onChanged.addListener(onChanged);
     return () => {
+      clearInterval(statsTimer);
       try {
         chrome.storage.onChanged.removeListener(onChanged);
       } catch {
@@ -748,9 +763,10 @@ export function Widget() {
               );
             })()}
             <div className="nomi-chips">
+              <button onClick={() => send('Analyze this page')}>Analyze this</button>
               <button onClick={() => send("How's today going?")}>Today?</button>
-              <button onClick={() => send('When did I last open leetcode?')}>Last seen…</button>
-              <button onClick={() => send('Focus with me for 25 minutes')}>Focus 25m</button>
+              <button onClick={() => send('Remember this link')}>Save link</button>
+              <button onClick={() => send('Focus with me for 25 minutes')}>Focus</button>
             </div>
             <form
               className="nomi-chat-input"
@@ -786,6 +802,59 @@ export function Widget() {
 
         <div className="nomi-orbwrap">
           <canvas ref={fxRef} className="nomi-fx" width={300} height={300} aria-hidden="true" />
+          {(() => {
+            // Productivity rings — live coding & learning progress around the
+            // avatar (Core Vision #10). Two Apple-Watch-style arcs.
+            const codingPct = stats ? Math.min(stats.codingMs / (3 * 3600000), 1) : 0;
+            const learningPct = stats ? Math.min(stats.learningMs / (2 * 3600000), 1) : 0;
+            const show = stats && !tucked && (codingPct > 0.01 || learningPct > 0.01);
+            if (!show) return null;
+            const arc = (r: number, pct: number) => {
+              const c = 2 * Math.PI * r;
+              return { r, c, off: c * (1 - pct) };
+            };
+            const outer = arc(69, codingPct);
+            const inner = arc(60, learningPct);
+            return (
+              <svg className="nomi-rings" viewBox="0 0 150 150" aria-hidden="true">
+                <defs>
+                  <linearGradient id="ringTeal" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0" stopColor="#5eead4" />
+                    <stop offset="1" stopColor="#22d3ee" />
+                  </linearGradient>
+                  <linearGradient id="ringLav" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0" stopColor="#c4b5fd" />
+                    <stop offset="1" stopColor="#a78bfa" />
+                  </linearGradient>
+                </defs>
+                <circle className="ring-bg" cx="75" cy="75" r={outer.r} />
+                <circle
+                  className="ring-fg"
+                  cx="75"
+                  cy="75"
+                  r={outer.r}
+                  stroke="url(#ringTeal)"
+                  strokeDasharray={outer.c}
+                  strokeDashoffset={outer.off}
+                />
+                <circle className="ring-bg" cx="75" cy="75" r={inner.r} />
+                <circle
+                  className="ring-fg"
+                  cx="75"
+                  cy="75"
+                  r={inner.r}
+                  stroke="url(#ringLav)"
+                  strokeDasharray={inner.c}
+                  strokeDashoffset={inner.off}
+                />
+              </svg>
+            );
+          })()}
+          {stats && stats.streak >= 2 && !tucked && (
+            <span className="nomi-streak-badge" title={`${stats.streak}-day streak`}>
+              ⚡{stats.streak}
+            </span>
+          )}
           <div
             className={`nomi-ring${mood.kind === 'focus' ? ' fast' : ''}${listening ? ' hot' : ''}`}
             aria-hidden="true"
