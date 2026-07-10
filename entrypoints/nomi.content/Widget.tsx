@@ -95,8 +95,14 @@ function pickVoice(): SpeechSynthesisVoice | null {
   if (cachedVoice !== undefined) return cachedVoice;
   const voices = speechSynthesis.getVoices();
   if (voices.length === 0) return null; // not loaded yet — retry next time
-  const prefer = ['Samantha', 'Siri', 'Ava', 'Zoe', 'Karen', 'Google US English', 'Daniel'];
+  // Prefer the softest, most natural voices — Apple's premium/Siri-class and
+  // Google's neural voices read calm and warm, not robotic.
+  const prefer = [
+    'Samantha', 'Ava', 'Siri', 'Serena', 'Allison', 'Zoe', 'Nicky', 'Karen',
+    'Google US English', 'Google UK English Female',
+  ];
   cachedVoice =
+    voices.find((v) => v.lang.startsWith('en') && /premium|siri|neural/i.test(v.name)) ??
     voices.find((v) => v.lang.startsWith('en') && prefer.some((p) => v.name.includes(p))) ??
     voices.find((v) => v.lang.startsWith('en')) ??
     voices[0] ??
@@ -104,16 +110,28 @@ function pickVoice(): SpeechSynthesisVoice | null {
   return cachedVoice;
 }
 
-function speak(text: string): void {
+interface SpeakCbs {
+  onStart?: () => void;
+  onEnd?: () => void;
+}
+
+function speak(text: string, cbs: SpeakCbs = {}): void {
   if (!('speechSynthesis' in window)) return;
   const clean = text.replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/gu, '').trim();
-  if (!clean) return;
+  if (!clean) {
+    cbs.onEnd?.();
+    return;
+  }
   const u = new SpeechSynthesisUtterance(clean);
   const v = pickVoice();
   if (v) u.voice = v;
-  u.rate = 0.96;
-  u.pitch = 1.04;
-  u.volume = 0.85;
+  // Softer & calmer — slower pace, natural pitch, gentle volume (Siri-like).
+  u.rate = 0.9;
+  u.pitch = 1.0;
+  u.volume = 0.8;
+  u.onstart = () => cbs.onStart?.();
+  u.onend = () => cbs.onEnd?.();
+  u.onerror = () => cbs.onEnd?.();
   speechSynthesis.cancel();
   speechSynthesis.speak(u);
 }
@@ -133,6 +151,7 @@ export function Widget() {
     message?: string;
   }>({ status: 'idle' });
   const [docked, setDocked] = useState(false);
+  const [speaking, setSpeaking] = useState(false);
   const [peeking, setPeeking] = useState(false);
   const [stretching, setStretching] = useState(false);
   const [aqua, setAqua] = useState(false);
@@ -421,7 +440,7 @@ export function Widget() {
   useEffect(() => {
     if (!bubble) return;
     if (voiceOn && document.visibilityState === 'visible' && document.hasFocus()) {
-      speak(bubble.text);
+      speak(bubble.text, { onStart: () => setSpeaking(true), onEnd: () => setSpeaking(false) });
     }
     const t = setTimeout(() => closeBubble(bubble, 'expired'), BUBBLE_LIFETIME_MS);
     return () => clearTimeout(t);
@@ -493,7 +512,8 @@ export function Widget() {
         if ('seeing' in (res ?? {})) setSeeing(res.seeing ?? null);
       } catch {}
       setThinking(false);
-      if (voiceOn && document.hasFocus()) speak(reply);
+      if (voiceOn && document.hasFocus())
+        speak(reply, { onStart: () => setSpeaking(true), onEnd: () => setSpeaking(false) });
 
       const ts = Date.now();
       const persist = (full: string) =>
@@ -859,13 +879,21 @@ export function Widget() {
             className={`nomi-ring${mood.kind === 'focus' ? ' fast' : ''}${listening ? ' hot' : ''}`}
             aria-hidden="true"
           />
+          {/* Voice ripples — Siri-like waves while listening. */}
+          {listening && (
+            <div className="nomi-voice-waves" aria-hidden="true">
+              <span />
+              <span />
+              <span />
+            </div>
+          )}
           <div
             ref={orbRef}
             className={`nomi-orb${blink ? ' blink' : ''}${paused ? ' paused' : ''}${
               bubble && !chatOpen ? ' glow' : ''
             }${moodClass}${stretching ? ' stretching' : ''}${aqua ? ' aqua' : ''}${
               hop ? ' hop' : ''
-            }`}
+            }${speaking ? ' speaking' : ''}${listening ? ' listening' : ''}`}
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
@@ -877,9 +905,19 @@ export function Widget() {
                 {timerText}
               </div>
             ) : (
-              <div className="nomi-eyes" ref={eyesRef}>
-                <div className="nomi-eye" />
-                <div className="nomi-eye" />
+              <div className="nomi-face">
+                <div className="nomi-eyes" ref={eyesRef}>
+                  <div className="nomi-eye">
+                    <span className="nomi-shine" />
+                  </div>
+                  <div className="nomi-eye">
+                    <span className="nomi-shine" />
+                  </div>
+                </div>
+                <div className="nomi-cheeks">
+                  <span />
+                  <span />
+                </div>
               </div>
             )}
           </div>
