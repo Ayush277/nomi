@@ -139,7 +139,6 @@ function speak(text: string, cbs: SpeakCbs = {}): void {
 export function Widget() {
   const [pos, setPos] = useState<Pos>(DEFAULT_POS);
   const [bubble, setBubble] = useState<Bubble | null>(null);
-  const [blink, setBlink] = useState(false);
   const [paused, setPaused] = useState(false);
   const [voiceOn, setVoiceOn] = useState(true);
   const [mood, setMood] = useState<MoodState>({ kind: 'idle' });
@@ -447,27 +446,7 @@ export function Widget() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bubble?.id]);
 
-  // Blink every 4–8s.
-  useEffect(() => {
-    if (reducedMotion) return;
-    let alive = true;
-    let timer: ReturnType<typeof setTimeout>;
-    const loop = () => {
-      timer = setTimeout(() => {
-        if (!alive) return;
-        setBlink(true);
-        setTimeout(() => setBlink(false), 140);
-        loop();
-      }, 4000 + Math.random() * 4000);
-    };
-    loop();
-    return () => {
-      alive = false;
-      clearTimeout(timer);
-    };
-  }, []);
-
-  // Gaze: eyes drift a few px toward the cursor — glancing, not tracking.
+  // Gaze: the visor drifts a few px toward the cursor — subtle parallax.
   useEffect(() => {
     if (reducedMotion) return;
     const onMove = (e: MouseEvent) => {
@@ -879,45 +858,32 @@ export function Widget() {
             className={`nomi-ring${mood.kind === 'focus' ? ' fast' : ''}${listening ? ' hot' : ''}`}
             aria-hidden="true"
           />
-          {/* Voice ripples — Siri-like waves while listening. */}
-          {listening && (
-            <div className="nomi-voice-waves" aria-hidden="true">
-              <span />
-              <span />
-              <span />
-            </div>
-          )}
           <div
             ref={orbRef}
-            className={`nomi-orb${blink ? ' blink' : ''}${paused ? ' paused' : ''}${
-              bubble && !chatOpen ? ' glow' : ''
-            }${moodClass}${stretching ? ' stretching' : ''}${aqua ? ' aqua' : ''}${
-              hop ? ' hop' : ''
-            }${speaking ? ' speaking' : ''}${listening ? ' listening' : ''}`}
+            className={`nomi-orb${paused ? ' paused' : ''}${bubble && !chatOpen ? ' glow' : ''}${moodClass}${
+              stretching ? ' stretching' : ''
+            }${aqua ? ' aqua' : ''}${hop ? ' hop' : ''}${speaking ? ' speaking' : ''}${
+              listening ? ' listening' : ''
+            }${thinking ? ' thinking' : ''}`}
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
             role="img"
-            aria-label="Nomi companion"
+            aria-label="Nomi"
           >
             {timerText ? (
               <div className="nomi-timer" aria-label={`Focus timer: ${timerText} remaining`}>
                 {timerText}
               </div>
             ) : (
-              <div className="nomi-face">
-                <div className="nomi-eyes" ref={eyesRef}>
-                  <div className="nomi-eye">
-                    <span className="nomi-shine" />
-                  </div>
-                  <div className="nomi-eye">
-                    <span className="nomi-shine" />
-                  </div>
-                </div>
-                <div className="nomi-cheeks">
-                  <span />
-                  <span />
-                </div>
+              <div className="nomi-visor" ref={eyesRef} aria-hidden="true">
+                <span className="nomi-bar" />
+                <span className="nomi-bar" />
+                <span className="nomi-bar" />
+                <span className="nomi-bar" />
+                <span className="nomi-bar" />
+                <span className="nomi-bar" />
+                <span className="nomi-bar" />
               </div>
             )}
           </div>
