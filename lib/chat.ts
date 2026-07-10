@@ -1,6 +1,7 @@
 import { getLinks, isRecallLinks, isSaveLink, saveLink, searchLinks } from './bag';
 import { freeChat } from './freechat';
 import { geminiChat } from './gemini';
+import { countEntries, getJournal, isCountQuery, logEntry, parseLog } from './journal';
 import { isMemoryQuery, searchMemory } from './memory';
 import { observableUrl } from './privacy';
 import { confirmSiteReminder, parseSiteReminder } from './smartreminders';
@@ -75,10 +76,52 @@ export async function chatRespond(
     return (
       'Holding: ' +
       upcoming
-        .map((r) => `"${r.what}" in ${Math.max(1, Math.round(((r.at ?? now) - now) / 60000))}m`)
+        .map((r) => {
+          const m = Math.max(1, Math.round(((r.at ?? now) - now) / 60000));
+          return `"${r.what}" in ${m} minute${m === 1 ? '' : 's'}`;
+        })
         .join(' · ') +
-      '. They show as chips right below this chat, × to cancel.'
+      '.'
     );
+  }
+
+  // "how many jobs did I apply to?" — count from the activity journal.
+  if (isCountQuery(q)) {
+    const { count, matched, window } = countEntries(q, await getJournal(), now);
+    if (count === 0) {
+      return "I don't have any of those logged yet. Tell me things like \"I applied to a job\" and I'll keep count.";
+    }
+    const when = window === 'ever' ? '' : ` ${window}`;
+    const recent = matched
+      .slice(-3)
+      .reverse()
+      .map((e) => `• ${e.text}`)
+      .join('\n');
+    return `${count}${when}. Most recent:\n${recent}`;
+  }
+
+  // "I applied to a job" / "log that I finished X" — record it, don't turn it
+  // into a timer. This is the fix for reminders misfiring on statements.
+  if (!/\bremind me\b/i.test(q) && !isSaveLink(q)) {
+    const logged = parseLog(q);
+    if (logged) {
+      await logEntry(logged);
+      return `Logged: "${logged}". Ask me "how many…" anytime and I'll count them.`;
+    }
+  }
+
+  // Personal Bag — "save this", "keep it in the bag/memory". Handled before
+  // reminders so it never gets mistaken for a timer.
+  if (isSaveLink(q)) {
+    const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+    const clean = tab?.url ? observableUrl(tab.url) : null;
+    if (!tab?.url || !clean) return "I can't save this page — it's a private or browser page.";
+    const saved = await saveLink({
+      url: tab.url.split('#')[0],
+      title: (tab.title ?? clean.domain).slice(0, 160),
+      domain: clean.domain,
+    });
+    return `Kept it — "${saved.title}" is in your bag. Ask "what did I save?" whenever.`;
   }
 
   // Context-triggered reminder — "remind me when I open Gmail to …". Checked
@@ -110,19 +153,6 @@ export async function chatRespond(
     });
     chrome.alarms.create(`nomi:reminder:${id}`, { when: now + reminder.delayMs });
     return confirmText(reminder);
-  }
-
-  // Personal Bag — "remember this link" saves the page you're on.
-  if (isSaveLink(q)) {
-    const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-    const clean = tab?.url ? observableUrl(tab.url) : null;
-    if (!tab?.url || !clean) return "I can't save this page — it's a private or browser page.";
-    const saved = await saveLink({
-      url: tab.url.split('#')[0],
-      title: (tab.title ?? clean.domain).slice(0, 160),
-      domain: clean.domain,
-    });
-    return `Saved to your bag: "${saved.title}". Ask me for it anytime — "the link about ${saved.title.split(' ').slice(0, 2).join(' ')}".`;
   }
 
   // Personal Bag recall — "which link did I save about X?"

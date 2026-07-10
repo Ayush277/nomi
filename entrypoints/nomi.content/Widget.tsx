@@ -115,25 +115,9 @@ interface SpeakCbs {
   onEnd?: () => void;
 }
 
-/** Chrome silently cuts speech off after ~15s, so a long reply "pauses after
- * one sentence". Two fixes together: split into sentence-sized utterances
- * (each short enough to never hit the cap) queued back-to-back, and a
- * keep-alive that resumes the queue if the engine stalls. */
-let keepAlive: ReturnType<typeof setInterval> | null = null;
-function startKeepAlive() {
-  if (keepAlive) return;
-  keepAlive = setInterval(() => {
-    if (!('speechSynthesis' in window) || !speechSynthesis.speaking) {
-      if (keepAlive) clearInterval(keepAlive);
-      keepAlive = null;
-      return;
-    }
-    // Nudge Chrome so it doesn't time the utterance out mid-sentence.
-    speechSynthesis.pause();
-    speechSynthesis.resume();
-  }, 9000);
-}
-
+/** System-voice fallback. Chrome cuts speech off after ~15s, so we split into
+ * sentence-sized utterances queued back-to-back (each well under the cap) —
+ * no pause/resume hack, which is what caused the "cracking". */
 function speak(text: string, cbs: SpeakCbs = {}): void {
   if (!('speechSynthesis' in window)) return;
   const clean = text.replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/gu, '').trim();
@@ -143,17 +127,16 @@ function speak(text: string, cbs: SpeakCbs = {}): void {
   }
   speechSynthesis.cancel();
   const v = pickVoice();
-  // Break into sentence/clause chunks; long ones split further on commas.
   const chunks = (clean.match(/[^.!?\n]+[.!?]*/g) ?? [clean])
-    .flatMap((s) => (s.length > 160 ? s.split(/,\s*/) : [s]))
+    .flatMap((s) => (s.length > 180 ? s.split(/,\s*/) : [s]))
     .map((s) => s.trim())
     .filter(Boolean);
   chunks.forEach((chunk, i) => {
     const u = new SpeechSynthesisUtterance(chunk);
     if (v) u.voice = v;
-    u.rate = 0.9; // softer & calmer
-    u.pitch = 1.0;
-    u.volume = 0.8;
+    u.rate = 0.92;
+    u.pitch = 1.05; // a touch higher — a lighter, warmer read
+    u.volume = 0.85;
     if (i === 0) u.onstart = () => cbs.onStart?.();
     if (i === chunks.length - 1) {
       u.onend = () => cbs.onEnd?.();
@@ -161,7 +144,6 @@ function speak(text: string, cbs: SpeakCbs = {}): void {
     }
     speechSynthesis.speak(u);
   });
-  startKeepAlive();
 }
 
 export function Widget() {
@@ -295,7 +277,48 @@ export function Widget() {
   const eyesRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const prevFocus = useRef<{ until: number } | null>(null);
+  const ttsAudio = useRef<HTMLAudioElement | null>(null);
   const drag = useRef<{ startX: number; startY: number; origin: Pos; moved: boolean } | null>(null);
+
+  // Stop whatever voice is playing (system or Gemini audio) — for barge-in.
+  const stopSpeaking = useCallback(() => {
+    speechSynthesis?.cancel();
+    if (ttsAudio.current) {
+      ttsAudio.current.pause();
+      ttsAudio.current.src = '';
+      ttsAudio.current = null;
+    }
+    setSpeaking(false);
+  }, []);
+
+  // Speak with the best voice available: a natural Gemini female voice when
+  // connected, else the system voice. Never blocks the reply text.
+  const speakSmart = useCallback(
+    (text: string) => {
+      stopSpeaking();
+      const fallback = () =>
+        speak(text, { onStart: () => setSpeaking(true), onEnd: () => setSpeaking(false) });
+      chrome.runtime
+        .sendMessage({ type: 'nomi:tts', text })
+        .then((res?: { audio?: string | null }) => {
+          if (!res?.audio) return fallback();
+          const a = new Audio(res.audio);
+          ttsAudio.current = a;
+          a.onplay = () => setSpeaking(true);
+          a.onended = () => {
+            setSpeaking(false);
+            ttsAudio.current = null;
+          };
+          a.onerror = () => {
+            ttsAudio.current = null;
+            fallback();
+          };
+          a.play().catch(() => fallback()); // autoplay blocked → system voice
+        })
+        .catch(fallback);
+    },
+    [stopSpeaking],
+  );
 
   const listening = voiceStatus.status === 'listening';
 
@@ -338,9 +361,9 @@ export function Widget() {
         const vs = changes['nomi:voiceStatus'].newValue;
         setVoiceStatus(vs);
         // Nomi yields the floor the moment the human is being heard.
-        if (vs.status === 'listening') speechSynthesis?.cancel();
+        if (vs.status === 'listening') stopSpeaking();
       }
-      if (area === 'session' && changes['nomi:ttsStop']) speechSynthesis?.cancel();
+      if (area === 'session' && changes['nomi:ttsStop']) stopSpeaking();
       if (area === 'session' && changes[OPEN_CHAT_KEY]?.newValue) {
         // Keyboard shortcut: only the tab the user is looking at responds.
         if (document.visibilityState === 'visible' && document.hasFocus()) {
@@ -447,7 +470,7 @@ export function Widget() {
     const onVis = () => {
       if (document.visibilityState === 'hidden') {
         hiddenAt = Date.now();
-        speechSynthesis?.cancel(); // switched away — stop talking mid-sentence
+        stopSpeaking(); // switched away — stop talking mid-sentence
       } else if (hiddenAt && Date.now() - hiddenAt > 20 * 60000) {
         setHop(true);
         setTimeout(() => setHop(false), 1600);
@@ -460,7 +483,7 @@ export function Widget() {
 
   const closeBubble = useCallback((b: Bubble, reason: 'dismissed' | 'expired') => {
     setBubble(null);
-    speechSynthesis?.cancel();
+    stopSpeaking();
     void chrome.runtime.sendMessage({ type: 'nomi:bubbleClosed', id: b.id, reason }).catch(() => {});
   }, []);
 
@@ -473,7 +496,7 @@ export function Widget() {
       fireTaskFx('done');
     }
     if (voiceOn && document.visibilityState === 'visible' && document.hasFocus()) {
-      speak(bubble.text, { onStart: () => setSpeaking(true), onEnd: () => setSpeaking(false) });
+      speakSmart(bubble.text);
     }
     const t = setTimeout(() => closeBubble(bubble, 'expired'), BUBBLE_LIFETIME_MS);
     return () => clearTimeout(t);
@@ -558,8 +581,7 @@ export function Widget() {
       else if (/\b(got it|on it|done|i'?ll (nudge|remind)|reminder set|next time you)\b/i.test(reply))
         fireTaskFx('accept');
 
-      if (voiceOn && document.hasFocus())
-        speak(reply, { onStart: () => setSpeaking(true), onEnd: () => setSpeaking(false) });
+      if (voiceOn && document.hasFocus()) speakSmart(reply);
 
       const ts = Date.now();
       const persist = (full: string) =>
@@ -594,9 +616,9 @@ export function Widget() {
   // offscreen document. Works in any Chromium browser — no Google service.
   const startListening = useCallback(() => {
     setChatOpen(true);
-    speechSynthesis?.cancel();
+    stopSpeaking();
     void chrome.runtime.sendMessage({ type: 'nomi:listenOnce' }).catch(() => {});
-  }, []);
+  }, [stopSpeaking]);
 
   // Focus timer chimes: soft note at the start, soft resolve at the end.
   useEffect(() => {

@@ -292,6 +292,28 @@ export default defineBackground(() => {
       case 'nomi:voiceText':
         void handleVoiceText(String(msg.text ?? ''));
         return;
+      case 'nomi:tts':
+        // Natural voice via Gemini TTS when enabled; else the widget uses the
+        // system voice. Returns a WAV data URL the widget can play.
+        void (async () => {
+          const settings = await getSettings();
+          if (!settings.gemini.enabled || !settings.gemini.apiKey.trim() || !settings.voice) {
+            sendResponse({ audio: null });
+            return;
+          }
+          try {
+            const { geminiTTS } = await import('../lib/gemini');
+            const { pcmToWavDataUrl } = await import('../lib/audio');
+            const { b64, rate } = await geminiTTS({
+              apiKey: settings.gemini.apiKey.trim(),
+              text: String(msg.text ?? '').slice(0, 600),
+            });
+            sendResponse({ audio: pcmToWavDataUrl(b64, rate) });
+          } catch {
+            sendResponse({ audio: null }); // fall back to system voice
+          }
+        })();
+        return true;
       case 'nomi:voiceAudio':
         // Recorded clip from the offscreen mic → transcribe with the user's
         // Gemini key → straight into the normal chat flow.

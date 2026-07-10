@@ -40,8 +40,15 @@ export function parseReminder(text: string): ParsedReminder | null {
   return { what, delayMs: Math.max(delayMs, 5000) };
 }
 
+/** Spoken-friendly duration — full words so TTS says "minutes", not "m". */
+export function spokenDelay(delayMs: number): string {
+  const mins = Math.round(delayMs / 60000);
+  if (mins < 1) return 'in a few seconds';
+  if (mins < 60) return `in ${mins} minute${mins === 1 ? '' : 's'}`;
+  const h = Math.round(mins / 60);
+  return `in ${h} hour${h === 1 ? '' : 's'}`;
+}
+
 export function confirmText(r: ParsedReminder): string {
-  const mins = Math.round(r.delayMs / 60000);
-  const when = mins < 1 ? 'in a few seconds' : mins < 60 ? `in ${mins}m` : `in ${Math.round(mins / 60)}h`;
-  return `Got it — I'll nudge you about "${r.what}" ${when}.`;
+  return `Got it — I'll nudge you about "${r.what}" ${spokenDelay(r.delayMs)}.`;
 }

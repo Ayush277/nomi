@@ -33,8 +33,12 @@ export async function removeLink(id: string): Promise<void> {
 }
 
 export function isSaveLink(text: string): boolean {
-  return /\b(remember|save|bag|keep|bookmark)\s+(this\s+)?(link|page|url|site|tab|article)\b/i.test(
-    text,
+  // "remember this link", "save this page", "keep it in the bag",
+  // "keep this in memory", "bookmark this", "add this to my bag".
+  return (
+    /\b(remember|save|bag|keep|bookmark|store|add)\b.*\b(link|page|url|site|tab|article|bag|memory)\b/i.test(
+      text,
+    ) || /\b(bookmark|save|bag)\s+(this|it)\b/i.test(text)
   );
 }
 

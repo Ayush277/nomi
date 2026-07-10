@@ -5,6 +5,43 @@
 
 const BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 
+/** Natural human voice via Gemini TTS. Returns raw PCM (base64) + sample
+ * rate; the caller wraps it in WAV. Warm female voices: Leda, Aoede, Kore. */
+export async function geminiTTS(opts: {
+  apiKey: string;
+  text: string;
+  voice?: string;
+}): Promise<{ b64: string; rate: number }> {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 20000);
+  try {
+    const res = await fetch(`${BASE}/gemini-2.5-flash-preview-tts:generateContent`, {
+      method: 'POST',
+      signal: ctrl.signal,
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': opts.apiKey },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: opts.text }] }],
+        generationConfig: {
+          responseModalities: ['AUDIO'],
+          speechConfig: {
+            voiceConfig: { prebuiltVoiceConfig: { voiceName: opts.voice ?? 'Leda' } },
+          },
+        },
+      }),
+    });
+    if (!res.ok) throw new Error(`tts ${res.status}`);
+    const json = await res.json();
+    const part = json?.candidates?.[0]?.content?.parts?.find((p: any) => p.inlineData);
+    const b64 = part?.inlineData?.data;
+    if (!b64) throw new Error('no audio');
+    const mime: string = part.inlineData.mimeType ?? '';
+    const rate = Number(mime.match(/rate=(\d+)/)?.[1] ?? 24000);
+    return { b64, rate };
+  } finally {
+    clearTimeout(t);
+  }
+}
+
 export async function geminiChat(opts: {
   apiKey: string;
   model: string;

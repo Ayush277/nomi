@@ -30,6 +30,6 @@ describe('parseReminder', () => {
   it('confirms in companion voice', () => {
     const r = parseReminder('remind me to stretch in 20 minutes')!;
     expect(confirmText(r)).toContain('stretch');
-    expect(confirmText(r)).toContain('20m');
+    expect(confirmText(r)).toContain('20 minutes');
   });
 });
