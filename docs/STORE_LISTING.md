@@ -68,4 +68,4 @@ notices the progress.
 - [ ] Screenshots 1280×800: widget on a docs page · chat sheet open · popup story · settings · onboarding.
 - [ ] Small promo tile 440×280 (orb on gradient), marquee 1400×560 optional.
 - [ ] Privacy policy hosted at a public URL (use PRIVACY.md on the landing page or GitHub Pages).
-- [ ] Version bump + `npm run zip` for the upload artifact.
+- [ ] Version bump + `npm run zip` for the upload artifact. **Delete `.env` first** — it seeds a personal Gemini key into local builds and must never ship.

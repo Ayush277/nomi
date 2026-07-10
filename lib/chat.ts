@@ -44,15 +44,42 @@ export async function polishStory(story: string): Promise<string> {
 }
 
 export async function chatRespond(text: string, history: ChatMessage[]): Promise<string> {
-  const q = text.trim();
+  let q = text.trim();
   const now = Date.now();
+
+  // "Hey Nomi, …" works everywhere — strip the wake phrase, then listen.
+  const wakePrefix =
+    q.match(/^(?:hey|hi|ok|yo|hello)[,!\s]+nomi[,!.\s]*/i) ?? q.match(/^nomi[,!.\s]+/i);
+  if (wakePrefix) q = q.slice(wakePrefix[0].length).trim();
+  if (wakePrefix && !q) return "Hey — I'm listening. What do you need?";
+
+  // "what are my reminders?" — show everything currently held.
+  if (/\b(what|list|show|any|see|check)\b.*\breminders?\b|^my reminders/i.test(q) && !parseReminder(q)) {
+    const { 'nomi:reminders': held } = await chrome.storage.local.get('nomi:reminders');
+    const upcoming = Object.values((held ?? {}) as Record<string, { what?: string; at?: number }>)
+      .filter((r) => typeof r === 'object' && r.at && r.at > now)
+      .sort((a, b) => (a.at ?? 0) - (b.at ?? 0));
+    if (upcoming.length === 0) {
+      return 'Nothing pending right now. Hand me one — "remind me to stretch in 20 minutes".';
+    }
+    return (
+      'Holding: ' +
+      upcoming
+        .map((r) => `"${r.what}" in ${Math.max(1, Math.round(((r.at ?? now) - now) / 60000))}m`)
+        .join(' · ') +
+      '. They show as chips right below this chat, × to cancel.'
+    );
+  }
 
   const reminder = parseReminder(q);
   if (reminder) {
     const id = crypto.randomUUID();
     const { 'nomi:reminders': reminders } = await chrome.storage.local.get('nomi:reminders');
     await chrome.storage.local.set({
-      'nomi:reminders': { ...(reminders ?? {}), [id]: reminder.what },
+      'nomi:reminders': {
+        ...(reminders ?? {}),
+        [id]: { what: reminder.what, at: now + reminder.delayMs },
+      },
     });
     chrome.alarms.create(`nomi:reminder:${id}`, { when: now + reminder.delayMs });
     return confirmText(reminder);

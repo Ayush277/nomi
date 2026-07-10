@@ -201,6 +201,22 @@ export default defineBackground(() => {
       case 'nomi:bubbleClosed':
         void recordBubbleClosed(String(msg.id ?? ''), msg.reason === 'dismissed' ? 'dismissed' : 'expired');
         return;
+      case 'nomi:cancelReminder': {
+        const id = String(msg.id ?? '');
+        void chrome.alarms.clear(`nomi:reminder:${id}`);
+        void chrome.storage.local.get('nomi:reminders').then(({ 'nomi:reminders': rem }) => {
+          if (rem && id in rem) {
+            delete rem[id];
+            return chrome.storage.local.set({ 'nomi:reminders': rem });
+          }
+        });
+        return;
+      }
+      case 'nomi:endFocus':
+        void chrome.alarms.clear('nomi:focusEnd');
+        void chrome.storage.local.remove('nomi:focusSession');
+        void chrome.storage.session.set({ 'nomi:mood': { kind: 'idle' } });
+        return;
     }
   });
 
@@ -263,7 +279,8 @@ export default defineBackground(() => {
     if (alarm.name.startsWith('nomi:reminder:')) {
       const id = alarm.name.slice('nomi:reminder:'.length);
       const { 'nomi:reminders': reminders } = await chrome.storage.local.get('nomi:reminders');
-      const what = reminders?.[id];
+      const entry = reminders?.[id];
+      const what = typeof entry === 'string' ? entry : entry?.what;
       if (what) {
         delete reminders[id];
         await chrome.storage.local.set({ 'nomi:reminders': reminders });

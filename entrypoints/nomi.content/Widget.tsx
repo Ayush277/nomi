@@ -204,6 +204,9 @@ export function Widget() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState('');
   const [thinking, setThinking] = useState(false);
+  const [reminders, setReminders] = useState<Record<string, { what: string; at: number }>>({});
+  const [focusSess, setFocusSess] = useState<{ until: number; minutes: number } | null>(null);
+  const [, setClockTick] = useState(0); // re-render for countdown chips
   const orbRef = useRef<HTMLDivElement>(null);
   const eyesRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -212,11 +215,15 @@ export function Widget() {
 
   // Initial state + follow changes from background/settings.
   useEffect(() => {
-    chrome.storage.local.get([POS_KEY, SETTINGS_KEY]).then((stored) => {
-      if (stored[POS_KEY]) setPos(stored[POS_KEY]);
-      setPaused(Boolean(stored[SETTINGS_KEY]?.paused));
-      setVoiceOn(stored[SETTINGS_KEY]?.voice ?? true);
-    });
+    chrome.storage.local
+      .get([POS_KEY, SETTINGS_KEY, 'nomi:reminders', 'nomi:focusSession'])
+      .then((stored) => {
+        if (stored[POS_KEY]) setPos(stored[POS_KEY]);
+        setPaused(Boolean(stored[SETTINGS_KEY]?.paused));
+        setVoiceOn(stored[SETTINGS_KEY]?.voice ?? true);
+        if (stored['nomi:reminders']) setReminders(stored['nomi:reminders']);
+        if (stored['nomi:focusSession']) setFocusSess(stored['nomi:focusSession']);
+      });
     chrome.storage.session.get([BUBBLE_KEY, CHAT_KEY, MOOD_KEY]).then((stored) => {
       if (stored[BUBBLE_KEY]) setBubble(stored[BUBBLE_KEY]);
       if (stored[CHAT_KEY]) setMessages(stored[CHAT_KEY]);
@@ -238,6 +245,12 @@ export function Widget() {
         setVoiceOn(changes[SETTINGS_KEY].newValue?.voice ?? true);
       }
       if (area === 'local' && changes[POS_KEY]?.newValue) setPos(changes[POS_KEY].newValue);
+      if (area === 'local' && changes['nomi:reminders']) {
+        setReminders(changes['nomi:reminders'].newValue ?? {});
+      }
+      if (area === 'local' && changes['nomi:focusSession']) {
+        setFocusSess(changes['nomi:focusSession'].newValue ?? null);
+      }
     };
     chrome.storage.onChanged.addListener(onChanged);
     return () => chrome.storage.onChanged.removeListener(onChanged);
@@ -385,6 +398,13 @@ export function Widget() {
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
   }, [messages.length, thinking, chatOpen]);
+
+  // Keep countdown chips honest while the chat is open.
+  useEffect(() => {
+    if (!chatOpen) return;
+    const t = setInterval(() => setClockTick((n) => n + 1), 20000);
+    return () => clearInterval(t);
+  }, [chatOpen]);
 
   const send = useCallback(
     async (text: string) => {
@@ -557,6 +577,47 @@ export function Widget() {
               ))}
               {thinking && <div className="nomi-msg nomi nomi-thinking">…</div>}
             </div>
+            {(() => {
+              const nowTs = Date.now();
+              const minsLeft = (t: number) => Math.max(1, Math.ceil((t - nowTs) / 60000));
+              const pending = Object.entries(reminders).filter(
+                ([, r]) => r && typeof r === 'object' && r.at > nowTs,
+              );
+              const focusLive = focusSess && focusSess.until > nowTs;
+              if (!focusLive && pending.length === 0) return null;
+              return (
+                <div className="nomi-holds">
+                  {focusLive && (
+                    <span className="nomi-hold focus">
+                      focus · {minsLeft(focusSess.until)}m left
+                      <button
+                        aria-label="End focus early"
+                        onClick={() =>
+                          void chrome.runtime.sendMessage({ type: 'nomi:endFocus' }).catch(() => {})
+                        }
+                      >
+                        ×
+                      </button>
+                    </span>
+                  )}
+                  {pending.map(([id, r]) => (
+                    <span key={id} className="nomi-hold">
+                      ⏳ {r.what} · {minsLeft(r.at)}m
+                      <button
+                        aria-label={`Cancel reminder: ${r.what}`}
+                        onClick={() =>
+                          void chrome.runtime
+                            .sendMessage({ type: 'nomi:cancelReminder', id })
+                            .catch(() => {})
+                        }
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              );
+            })()}
             <div className="nomi-chips">
               <button onClick={() => send("How's today going?")}>Today?</button>
               <button onClick={() => send('When did I last open leetcode?')}>Last seen…</button>

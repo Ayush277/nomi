@@ -96,7 +96,13 @@ export const DEFAULT_SETTINGS: NomiSettings = {
   maxNudgesPerDay: 6,
   voice: true,
   ollama: { enabled: false, model: 'llama3.1:8b' },
-  gemini: { enabled: false, apiKey: '', model: 'gemini-2.5-flash' },
+  // WXT_GEMINI_KEY comes from the gitignored .env — dev convenience only.
+  // A build meant for the Web Store must be made WITHOUT that file.
+  gemini: {
+    enabled: Boolean((import.meta as any).env?.WXT_GEMINI_KEY),
+    apiKey: ((import.meta as any).env?.WXT_GEMINI_KEY as string) ?? '',
+    model: 'gemini-2.5-flash',
+  },
 };
 
 /** Widget mood, set by the background, rendered by every tab's orb. */
