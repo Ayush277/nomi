@@ -107,6 +107,13 @@ export function App() {
         </div>
       )}
 
+      <button
+        className="dash-open"
+        onClick={() => chrome.tabs.create({ url: chrome.runtime.getURL('/dashboard.html') })}
+      >
+        Open your second brain →
+      </button>
+
       <footer>
         <button onClick={togglePause}>{paused ? 'Resume' : 'Pause Nomi'}</button>
         <span className="privacy">All of this stays on your device.</span>
