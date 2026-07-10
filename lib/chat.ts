@@ -1,3 +1,4 @@
+import { freeChat } from './freechat';
 import { geminiChat } from './gemini';
 import { isMemoryQuery, searchMemory } from './memory';
 import { narrate } from './narrative';
@@ -125,9 +126,6 @@ export async function chatRespond(text: string, history: ChatMessage[]): Promise
   }
 
   const settings = await getSettings();
-  const useGemini = settings.gemini.enabled && settings.gemini.apiKey.trim() !== '';
-  if (!useGemini && !settings.ollama.enabled) return NO_LLM_FALLBACK;
-
   const system = personaPrompt(await todayLine(now));
   const messages = [
     ...history.slice(-8).map((m) => ({
@@ -137,23 +135,37 @@ export async function chatRespond(text: string, history: ChatMessage[]): Promise
     { role: 'user' as const, content: q },
   ];
 
-  if (useGemini) {
-    try {
-      return await geminiChat({
+  // Provider chain: best brain first, each failure falls through to the
+  // next, so a quota error never reads as Nomi going silent.
+  const providers: (() => Promise<string>)[] = [];
+  if (settings.gemini.enabled && settings.gemini.apiKey.trim()) {
+    providers.push(() =>
+      geminiChat({
         apiKey: settings.gemini.apiKey.trim(),
         model: settings.gemini.model,
         system,
         messages,
-      });
-    } catch {
-      // Fall through to Ollama if it's also configured.
-      if (!settings.ollama.enabled) return GEMINI_ERROR_FALLBACK;
-    }
+      }),
+    );
+  }
+  if (settings.ollama.enabled) {
+    providers.push(() => ollamaChat({ model: settings.ollama.model, system, messages }));
+  }
+  if (settings.freeChat) {
+    providers.push(() => freeChat({ system, messages }));
   }
 
-  try {
-    return await ollamaChat({ model: settings.ollama.model, system, messages });
-  } catch {
-    return OLLAMA_ERROR_FALLBACK;
+  if (providers.length === 0) return NO_LLM_FALLBACK;
+
+  let lastError = '';
+  for (const provider of providers) {
+    try {
+      return await provider();
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : String(err);
+    }
   }
+  if (lastError.startsWith('gemini')) return GEMINI_ERROR_FALLBACK;
+  if (settings.ollama.enabled && !settings.freeChat) return OLLAMA_ERROR_FALLBACK;
+  return "Every chat brain I can reach is having a moment — try me again in a minute. Today's story, memory, and reminders all still work.";
 }

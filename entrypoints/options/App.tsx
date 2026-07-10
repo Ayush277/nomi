@@ -215,6 +215,20 @@ export function App() {
         </label>
         <label className="row">
           <span>
+            <strong>Free fallback chat (no key)</strong>
+            <em>
+              If Gemini and Ollama can't answer, chat falls back to pollinations.ai — free and
+              keyless; your chat messages go there when it's used.
+            </em>
+          </span>
+          <input
+            type="checkbox"
+            checked={settings.freeChat}
+            onChange={(e) => update({ freeChat: e.target.checked })}
+          />
+        </label>
+        <label className="row">
+          <span>
             <strong>API key</strong>
           </span>
           <span className="quiet-controls">

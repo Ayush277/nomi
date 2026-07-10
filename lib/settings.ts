@@ -11,6 +11,10 @@ export async function getSettings(): Promise<NomiSettings> {
     gemini.apiKey = DEFAULT_SETTINGS.gemini.apiKey;
     gemini.enabled = true;
   }
+  // Retired free-tier models get upgraded to the current working default.
+  if (!gemini.model || gemini.model === 'gemini-2.5-flash' || gemini.model === 'gemini-2.0-flash') {
+    gemini.model = DEFAULT_SETTINGS.gemini.model;
+  }
   return {
     ...DEFAULT_SETTINGS,
     ...(stored[SETTINGS_KEY] ?? {}),

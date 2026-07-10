@@ -87,6 +87,8 @@ export interface NomiSettings {
     apiKey: string;
     model: string;
   };
+  /** Keyless free cloud chat fallback — used only when Gemini/Ollama can't answer. */
+  freeChat: boolean;
 }
 
 export const DEFAULT_SETTINGS: NomiSettings = {
@@ -101,8 +103,12 @@ export const DEFAULT_SETTINGS: NomiSettings = {
   gemini: {
     enabled: Boolean((import.meta as any).env?.WXT_GEMINI_KEY),
     apiKey: ((import.meta as any).env?.WXT_GEMINI_KEY as string) ?? '',
-    model: 'gemini-2.5-flash',
+    // Free tier in mid-2026: older stable models have zero free quota;
+    // the current preview models are what free keys can actually call.
+    model: 'gemini-3.1-flash-lite-preview',
   },
+  /** Keyless free cloud fallback (pollinations.ai) so chat never dead-ends. */
+  freeChat: true,
 };
 
 /** Widget mood, set by the background, rendered by every tab's orb. */
