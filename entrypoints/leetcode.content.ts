@@ -7,7 +7,9 @@ export default defineContentScript({
   matches: ['*://leetcode.com/*'],
   runAt: 'document_idle',
 
-  main() {
+  main(ctx) {
+    // Detects extension reloads so the orphaned observer stands down quietly.
+    ctx.setInterval(() => {}, 8000);
     let lastSent = { slug: '', ts: 0 };
 
     const slugFromUrl = (): string | null =>
@@ -50,5 +52,6 @@ export default defineContentScript({
       }, 300);
     });
     observer.observe(document.body, { childList: true, subtree: true });
+    ctx.onInvalidated(() => observer.disconnect());
   },
 });

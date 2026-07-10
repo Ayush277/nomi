@@ -6,7 +6,9 @@ export default defineContentScript({
   matches: ['*://www.youtube.com/*', '*://m.youtube.com/*'],
   runAt: 'document_idle',
 
-  main() {
+  main(ctx) {
+    // Detects extension reloads so the orphaned observer stands down quietly.
+    ctx.setInterval(() => {}, 8000);
     let lastVideo = '';
 
     const check = () => {

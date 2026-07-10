@@ -23,5 +23,10 @@ export default defineContentScript({
       onRemove: (root) => root?.unmount(),
     });
     ui.mount();
+
+    // Heartbeat through ctx: when the extension reloads, this notices the
+    // dead runtime and WXT unmounts the orphaned widget instead of letting
+    // it throw "Extension context invalidated" into the page console.
+    ctx.setInterval(() => {}, 8000);
   },
 });

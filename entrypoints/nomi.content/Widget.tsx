@@ -223,12 +223,16 @@ export function Widget() {
         setVoiceOn(stored[SETTINGS_KEY]?.voice ?? true);
         if (stored['nomi:reminders']) setReminders(stored['nomi:reminders']);
         if (stored['nomi:focusSession']) setFocusSess(stored['nomi:focusSession']);
-      });
-    chrome.storage.session.get([BUBBLE_KEY, CHAT_KEY, MOOD_KEY]).then((stored) => {
-      if (stored[BUBBLE_KEY]) setBubble(stored[BUBBLE_KEY]);
-      if (stored[CHAT_KEY]) setMessages(stored[CHAT_KEY]);
-      if (stored[MOOD_KEY]) setMood(stored[MOOD_KEY]);
-    });
+      })
+      .catch(() => {}); // orphaned after an extension reload — stay quiet
+    chrome.storage.session
+      .get([BUBBLE_KEY, CHAT_KEY, MOOD_KEY])
+      .then((stored) => {
+        if (stored[BUBBLE_KEY]) setBubble(stored[BUBBLE_KEY]);
+        if (stored[CHAT_KEY]) setMessages(stored[CHAT_KEY]);
+        if (stored[MOOD_KEY]) setMood(stored[MOOD_KEY]);
+      })
+      .catch(() => {});
     const onChanged = (changes: Record<string, chrome.storage.StorageChange>, area: string) => {
       if (area === 'session' && changes[BUBBLE_KEY]) setBubble(changes[BUBBLE_KEY].newValue ?? null);
       if (area === 'session' && changes[CHAT_KEY]) setMessages(changes[CHAT_KEY].newValue ?? []);
@@ -253,7 +257,13 @@ export function Widget() {
       }
     };
     chrome.storage.onChanged.addListener(onChanged);
-    return () => chrome.storage.onChanged.removeListener(onChanged);
+    return () => {
+      try {
+        chrome.storage.onChanged.removeListener(onChanged);
+      } catch {
+        // extension reloaded from under us — nothing to detach from
+      }
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -413,7 +423,7 @@ export function Widget() {
       setDraft('');
       const withUser: ChatMessage[] = [...messages, { role: 'user', text: q, ts: Date.now() }];
       setMessages(withUser);
-      void chrome.storage.session.set({ [CHAT_KEY]: withUser });
+      void chrome.storage.session.set({ [CHAT_KEY]: withUser }).catch(() => {});
       setThinking(true);
       let reply = 'Hmm, I lost my train of thought — try that again?';
       try {
@@ -423,7 +433,7 @@ export function Widget() {
       const withReply: ChatMessage[] = [...withUser, { role: 'nomi', text: reply, ts: Date.now() }];
       setThinking(false);
       setMessages(withReply);
-      void chrome.storage.session.set({ [CHAT_KEY]: withReply });
+      void chrome.storage.session.set({ [CHAT_KEY]: withReply }).catch(() => {});
       if (voiceOn && document.hasFocus()) speak(reply);
     },
     [messages, thinking, voiceOn],
@@ -510,7 +520,7 @@ export function Widget() {
           right: p.right < 80 ? 24 : p.right,
           bottom: p.bottom < 80 ? 24 : p.bottom,
         };
-        void chrome.storage.local.set({ [POS_KEY]: snapped });
+        void chrome.storage.local.set({ [POS_KEY]: snapped }).catch(() => {});
         return snapped;
       });
     } else if (bubble) {
