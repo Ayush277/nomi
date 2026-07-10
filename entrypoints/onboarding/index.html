@@ -29,22 +29,38 @@
         <div class="card">
           <h2>What I never touch</h2>
           <p>
-            Keystrokes, passwords, messages, page contents. Banking, health, and mail sites are
-            invisible to me — and you can add any site to that list.
+            Keystrokes, passwords, form fields, private messages. When you ask about a page I read
+            its visible text — never anything you type. Banking, health, and mail stay invisible.
           </p>
         </div>
         <div class="card">
           <h2>Where it all lives</h2>
           <p>
-            On this device, encrypted. No cloud, no accounts, no telemetry. Export it or erase it
-            any time — it's yours.
+            On this device. No accounts, no telemetry. Export it or erase it any time — it's yours.
           </p>
+        </div>
+      </div>
+
+      <div class="setup">
+        <label class="field">
+          <span>What should I call you?</span>
+          <input id="name" type="text" placeholder="your name (optional)" maxlength="24" />
+        </label>
+        <div class="field">
+          <span>Pick a vibe — you can change it anytime</span>
+          <div class="personas" id="personas">
+            <button data-p="friend" class="p on"><b>Friend</b>warm &amp; casual</button>
+            <button data-p="coach" class="p"><b>Coach</b>pushes you</button>
+            <button data-p="mentor" class="p"><b>Mentor</b>calm &amp; wise</button>
+            <button data-p="strict" class="p"><b>Strict</b>no-nonsense</button>
+          </div>
         </div>
       </div>
 
       <p class="tips">
         You'll find me in the corner of every page — <strong>drag</strong> me anywhere,
-        <strong> tap</strong> me to talk. If you ever want quiet, the popup has a pause button.
+        <strong>tap</strong> me to talk. I work right away; add a Gemini key in Settings for the
+        smartest conversations.
       </p>
 
       <button id="go">Let's go</button>

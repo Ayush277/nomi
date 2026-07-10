@@ -17,10 +17,13 @@ Everything Nomi remembers stays on your device, encrypted. Nothing is sent to us
 ## What Nomi never touches
 
 - Keystrokes, form fields, passwords, clipboard.
-- Message or email content, page text, screenshots.
+- Keystrokes, form fields, passwords, message or email content — ever.
+- Screenshots.
 - Anything in incognito windows.
 - Banking, healthcare, and mail sites — blocked by a built-in list, and you can add any site to your own exclusion list in Settings.
 - Anything while paused. Pause means nothing is recorded, full stop.
+
+**One thing that changed with chat:** when you ask Nomi about the page you're on ("analyze this", "what's on my screen?"), it reads the page's *visible text* — headings and body prose only, never form fields or anything you type — to answer you. This text is used for that reply and never stored. It's still gated by every rule above: excluded sites, sensitive categories, incognito, and pause all keep a page invisible even to chat.
 
 ## Where your data lives
 
@@ -33,8 +36,8 @@ Honest caveat: the encryption key also lives on your device, so this protects ag
 The extension makes **no network requests by default**. Two opt-in exceptions, both off until you enable them in Settings:
 
 1. **Local AI (Ollama)** — Nomi talks to an Ollama server at `http://localhost:11434`, software running on your own machine. That traffic never leaves your computer.
-2. **Cloud AI (Gemini)** — if you paste your own Google API key and switch it on, your **chat messages** (plus a one-line summary of today) are sent to Google's Gemini API to generate replies. Nothing else is ever sent: not your browsing history, not your memory, not your events. Settings states this in plain words next to the toggle, and turning it off stops all cloud traffic immediately.
-3. **Free fallback chat (pollinations.ai)** — when enabled and no other chat brain can answer, your **chat messages** (and the same one-line today summary) go to the keyless pollinations.ai service. Same scope as above: chat only, never browsing data or memory. One toggle in Settings turns it off.
+2. **Cloud AI (Gemini)** — if you paste your own Google API key and switch it on, your **chat messages** (plus a one-line summary of today, what Nomi remembers about you, and — when you ask about a page — that page's visible text) are sent to Google's Gemini API to generate replies. Your raw browsing history and event log are never sent. Settings states this next to the toggle, and turning it off stops all cloud traffic immediately.
+3. **Free fallback chat (pollinations.ai)** — when enabled (on by default so chat works with no setup) and no other chat brain is configured, the same chat context goes to the keyless pollinations.ai service instead. One toggle in Settings turns it off.
 4. **Voice input (Gemini transcription)** — when you tap the mic and speak, the recorded clip is sent to Google's Gemini API (using your key) to turn it into text, which then flows through chat like any typed message. The microphone is only active while you are actively speaking to Nomi; clips are never stored. This is off unless you grant the microphone and use it.
 
 ## Permissions, and why

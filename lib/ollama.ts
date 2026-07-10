@@ -17,19 +17,6 @@ export async function ollamaAvailable(): Promise<boolean> {
   }
 }
 
-export function personaPrompt(todayContext: string, screenContext?: string): string {
-  return [
-    "You are Nomi, a warm digital companion who shares the user's workspace.",
-    'Voice: warm, brief, specific, lightly playful, never clinical. One to three sentences.',
-    'You support and notice; you never control, judge, grade, or guilt.',
-    'Never describe yourself as watching, monitoring, or tracking — you are simply here, alongside.',
-    `What you know about today: ${todayContext}`,
-    screenContext ? `Right now the user is on: ${screenContext}. Ground your answers in that when relevant.` : '',
-  ]
-    .filter(Boolean)
-    .join(' ');
-}
-
 export async function ollamaChat(opts: {
   model: string;
   system: string;

@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { PERSONALITIES } from '../../lib/persona';
+import { DEFAULT_PROFILE, PROFILE_KEY, type NomiProfile } from '../../lib/profile';
 import type { ChatMessage, MoodState } from '../../lib/types';
 
 interface Bubble {
@@ -230,6 +232,10 @@ export function Widget() {
   const [reminders, setReminders] = useState<Record<string, { what: string; at: number }>>({});
   const [focusSess, setFocusSess] = useState<{ until: number; minutes: number } | null>(null);
   const [, setClockTick] = useState(0); // re-render for countdown chips
+  const [profile, setProfile] = useState<NomiProfile>(DEFAULT_PROFILE);
+  const [seeing, setSeeing] = useState<string | null>(null);
+  const [showContext, setShowContext] = useState(false);
+  const revealTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const orbRef = useRef<HTMLDivElement>(null);
   const eyesRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -250,6 +256,10 @@ export function Widget() {
         if (stored['nomi:focusSession']) setFocusSess(stored['nomi:focusSession']);
       })
       .catch(() => {}); // orphaned after an extension reload — stay quiet
+    chrome.storage.local
+      .get(PROFILE_KEY)
+      .then((s) => s[PROFILE_KEY] && setProfile({ ...DEFAULT_PROFILE, ...s[PROFILE_KEY] }))
+      .catch(() => {});
     chrome.storage.session
       .get([BUBBLE_KEY, CHAT_KEY, MOOD_KEY])
       .then((stored) => {
@@ -286,6 +296,9 @@ export function Widget() {
       }
       if (area === 'local' && changes['nomi:focusSession']) {
         setFocusSess(changes['nomi:focusSession'].newValue ?? null);
+      }
+      if (area === 'local' && changes[PROFILE_KEY]?.newValue) {
+        setProfile({ ...DEFAULT_PROFILE, ...changes[PROFILE_KEY].newValue });
       }
     };
     chrome.storage.onChanged.addListener(onChanged);
@@ -462,12 +475,36 @@ export function Widget() {
       try {
         const res = await chrome.runtime.sendMessage({ type: 'nomi:chat', text: q, history: messages });
         if (res?.text) reply = res.text;
+        if ('seeing' in (res ?? {})) setSeeing(res.seeing ?? null);
       } catch {}
-      const withReply: ChatMessage[] = [...withUser, { role: 'nomi', text: reply, ts: Date.now() }];
       setThinking(false);
-      setMessages(withReply);
-      void chrome.storage.session.set({ [CHAT_KEY]: withReply }).catch(() => {});
       if (voiceOn && document.hasFocus()) speak(reply);
+
+      const ts = Date.now();
+      const persist = (full: string) =>
+        void chrome.storage.session
+          .set({ [CHAT_KEY]: [...withUser, { role: 'nomi', text: full, ts }] })
+          .catch(() => {});
+
+      // Reveal the reply word-by-word — a buddy talks, it doesn't paste.
+      if (reducedMotion) {
+        setMessages([...withUser, { role: 'nomi', text: reply, ts }]);
+        persist(reply);
+        return;
+      }
+      const words = reply.split(' ');
+      let i = 0;
+      if (revealTimer.current) clearInterval(revealTimer.current);
+      revealTimer.current = setInterval(() => {
+        i = Math.min(i + (i < 4 ? 1 : 2), words.length);
+        setMessages([...withUser, { role: 'nomi', text: words.slice(0, i).join(' '), ts }]);
+        listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
+        if (i >= words.length) {
+          clearInterval(revealTimer.current!);
+          revealTimer.current = null;
+          persist(reply);
+        }
+      }, 32);
     },
     [messages, thinking, voiceOn],
   );
@@ -606,16 +643,45 @@ export function Widget() {
                 <i className="nomi-status" aria-hidden="true" />
                 Nomi
               </span>
-              <span className="nomi-chat-sub">v{VERSION} · ON-DEVICE</span>
+              <button
+                className={`nomi-eye-btn${showContext ? ' on' : ''}`}
+                onClick={() => setShowContext((v) => !v)}
+                title="What Nomi can see & remember"
+                aria-label="What Nomi can see"
+              >
+                👁 what I see
+              </button>
               <button className="nomi-chat-close" onClick={() => setChatOpen(false)} aria-label="Close chat">
                 ×
               </button>
             </div>
+            {showContext && (
+              <div className="nomi-context">
+                <div>
+                  <b>Seeing</b>{' '}
+                  {seeing ??
+                    (paused
+                      ? 'nothing — paused'
+                      : (document.title || 'this page').slice(0, 70))}
+                </div>
+                <div>
+                  <b>Remembers</b>{' '}
+                  {profile.name ? `you're ${profile.name}` : 'getting to know you'}
+                  {profile.goal ? ` · goal: ${profile.goal.slice(0, 40)}` : ''}
+                  {profile.facts.length ? ` · ${profile.facts.length} note${profile.facts.length > 1 ? 's' : ''}` : ''}
+                </div>
+                <div>
+                  <b>Mode</b> {PERSONALITIES[profile.personality]?.label ?? 'Friend'} ·{' '}
+                  <span className="nomi-ctx-ver">v{VERSION} · on-device</span>
+                </div>
+              </div>
+            )}
             <div className="nomi-chat-list" ref={listRef}>
               {messages.length === 0 && (
                 <div className="nomi-msg nomi">
-                  Hey. Ask me anything — "how's today going?", "when did I last open leetcode?", or
-                  "remind me to stretch in 20 minutes".
+                  {profile.name ? `Hey ${profile.name}. ` : 'Hey. '}I can see the page you're on and I
+                  remember what matters. Try "analyze this page", "how's today going?", or "remember
+                  I'm prepping for interviews".
                 </div>
               )}
               {messages.map((m, i) => (

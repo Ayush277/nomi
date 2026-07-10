@@ -37,15 +37,34 @@ async function activeTabUrl(): Promise<{ url: string | null; tabId: number | nul
   return { url: tab?.url ?? null, tabId: tab?.id ?? null };
 }
 
-/** Live "what's on screen" line for chat grounding — domain + page title
- * from the tabs API. Ephemeral: used in the prompt, never stored. */
-async function screenContext(): Promise<string | undefined> {
+/** Live "what's on screen" for chat grounding — the actual visible page
+ * text, pulled from the active tab's content script. Ephemeral: used in the
+ * prompt, never stored. Sensitive/excluded/paused → nothing, so those pages
+ * stay invisible even to chat. Returns a one-line label + the body text. */
+async function screenContext(): Promise<{ label: string; text: string } | undefined> {
+  const settings = await getSettings();
+  if (settings.paused) return undefined;
   const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-  if (!tab?.url) return undefined;
-  const clean = observableUrl(tab.url, (await getSettings()).exclusions);
-  if (!clean) return undefined; // sensitive/excluded pages stay invisible, even to chat
-  const title = (tab.title ?? '').slice(0, 120);
-  return `${clean.domain}${clean.path}${title ? ` — "${title}"` : ''}`;
+  if (!tab?.url || tab.id === undefined) return undefined;
+  const clean = observableUrl(tab.url, settings.exclusions);
+  if (!clean) return undefined;
+
+  const label = `${clean.domain}${clean.path}`;
+  try {
+    const snap = await chrome.tabs.sendMessage(tab.id, { type: 'nomi:snapshot' });
+    const heading = snap?.heading || snap?.title || '';
+    const labelWithTitle = heading ? `${clean.domain} — "${String(heading).slice(0, 120)}"` : label;
+    return { label: labelWithTitle, text: String(snap?.text ?? '').slice(0, 2000) };
+  } catch {
+    // Content script not present (e.g. a store page) — fall back to the label.
+    return { label: tab.title ? `${clean.domain} — "${tab.title.slice(0, 120)}"` : label, text: '' };
+  }
+}
+
+/** Compose the screen string handed to the chat brain. */
+function screenPrompt(screen: { label: string; text: string } | undefined): string | undefined {
+  if (!screen) return undefined;
+  return screen.text ? `${screen.label}\n\nVisible content:\n${screen.text}` : screen.label;
 }
 
 // ---- voice engine (offscreen document with local Whisper) -----------------
@@ -73,7 +92,7 @@ async function handleVoiceText(text: string): Promise<void> {
   const { 'nomi:chatHistory': history = [] } = await chrome.storage.session.get('nomi:chatHistory');
   const withUser = [...history, { role: 'user', text: t, ts: Date.now() }];
   await chrome.storage.session.set({ 'nomi:chatHistory': withUser });
-  const reply = await chatRespond(t, history, await screenContext()).catch(
+  const reply = await chatRespond(t, history, screenPrompt(await screenContext())).catch(
     () => 'Glitched on my side — say that again?',
   );
   await chrome.storage.session.set({
@@ -210,12 +229,19 @@ export default defineBackground(() => {
         // reads as Nomi ignoring the user, which is the one unforgivable bug.
         void screenContext()
           .catch(() => undefined)
-          .then((screen) => chatRespond(String(msg.text ?? ''), msg.history ?? [], screen))
+          .then((screen) =>
+            chatRespond(String(msg.text ?? ''), msg.history ?? [], screenPrompt(screen)).then(
+              (text) => ({ text, seeing: screen?.label }),
+            ),
+          )
           .catch((err) => {
             console.error('[nomi] chat error:', err);
-            return `Something glitched on my side (${err instanceof Error ? err.message : 'unknown'}). Say that again?`;
+            return {
+              text: `Something glitched on my side (${err instanceof Error ? err.message : 'unknown'}). Say that again?`,
+              seeing: undefined,
+            };
           })
-          .then((text) => sendResponse({ text }));
+          .then((res) => sendResponse(res));
         return true;
       case 'nomi:listenOnce':
         void ensureOffscreen()

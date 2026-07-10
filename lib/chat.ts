@@ -2,7 +2,9 @@ import { freeChat } from './freechat';
 import { geminiChat } from './gemini';
 import { isMemoryQuery, searchMemory } from './memory';
 import { narrate } from './narrative';
-import { ollamaChat, personaPrompt } from './ollama';
+import { ollamaChat } from './ollama';
+import { buildSystemPrompt, PERSONALITIES } from './persona';
+import { addFact, getProfile, parseName, parseRemember, removeFact, saveProfile } from './profile';
 import { confirmText, parseReminder } from './reminders';
 import { getSettings } from './settings';
 import { allRollups, eventsSince, sessionsSince } from './store';
@@ -29,7 +31,7 @@ export async function polishStory(story: string): Promise<string> {
   try {
     const polished = await ollamaChat({
       model: settings.ollama.model,
-      system: personaPrompt(story),
+      system: buildSystemPrompt({ profile: await getProfile(), todayContext: story }),
       messages: [
         {
           role: 'user',
@@ -90,18 +92,55 @@ export async function chatRespond(
     return confirmText(reminder);
   }
 
+  // "remember that I ..." — a fact about the person, stored forever.
+  const remember = parseRemember(q);
+  if (remember) {
+    await addFact(remember);
+    return `Got it — I'll remember that. (You can see and edit everything I know in Settings → What I remember.)`;
+  }
+
+  // "forget that / forget about X" — the user stays in control of memory.
+  if (/^(?:nomi[,\s]+)?forget\b/i.test(q)) {
+    const profile = await getProfile();
+    if (profile.facts.length === 0) return "There's nothing saved about you to forget yet.";
+    const target = q.replace(/^(?:nomi[,\s]+)?forget\s*(?:that|about)?\s*/i, '').trim();
+    if (!target || /^(that|it|the last( one)?)$/i.test(target)) {
+      const last = profile.facts[profile.facts.length - 1];
+      await removeFact(last.id);
+      return `Done — forgot "${last.text}".`;
+    }
+    const match = profile.facts.find((f) => f.text.toLowerCase().includes(target.toLowerCase()));
+    if (match) {
+      await removeFact(match.id);
+      return `Done — forgot "${match.text}".`;
+    }
+    return "I couldn't find that among what I remember. Try Settings → What I remember to clear it.";
+  }
+
+  // Passively pick up the user's name if we don't have it yet.
+  const profileNow = await getProfile();
+  if (!profileNow.name) {
+    const spotted = parseName(q);
+    if (spotted) {
+      await saveProfile({ ...profileNow, name: spotted });
+      return `Nice to properly meet you, ${spotted}. I'll remember that.`;
+    }
+  }
+
   // A buddy answers hello like a person, not like a search box.
   if (/^(hi+|hey+|hello+|yo|sup|good (morning|afternoon|evening))[\s!.]*$/i.test(q)) {
-    return "Hey! Right here beside you. Ask for today's story, dig up a memory, or hand me a reminder.";
+    const hi = profileNow.name ? `Hey ${profileNow.name}!` : 'Hey!';
+    return `${hi} Right here beside you. Ask for today's story, dig up a memory, or just talk.`;
   }
   if (/^(thanks|thank you|thx|ty)\b/i.test(q)) {
     return "Anytime. I'm not going anywhere.";
   }
   if (/\b(who|what) (are|r) (you|u)\b/i.test(q)) {
-    return "I'm Nomi — a quiet companion sharing your workspace. I notice how the day flows, remember it for you, and cheer when things land. Everything stays on this device.";
+    const p = PERSONALITIES[profileNow.personality] ?? PERSONALITIES.friend;
+    return `I'm Nomi — your companion sharing your workspace, in ${p.label.toLowerCase()} mode right now. I notice how your day flows, remember what matters${profileNow.name ? `, ${profileNow.name}` : ''}, and everything stays on this device.`;
   }
   if (/what can you do|^help[\s!?]*$|how do (i|you) work/i.test(q)) {
-    return 'What I do: "how\'s today going?" tells the story so far · "when did I last open leetcode?" searches memory · "remind me to stretch in 20 minutes" sets a nudge · "focus with me for 25 minutes" starts a quiet heads-down timer. Connect a local model in Settings and we can talk about anything.';
+    return 'Talk to me about anything — I can see the page you\'re on and I remember you. Try: "analyze this page" · "how\'s today going?" · "remember I\'m prepping for interviews" · "remind me to stretch in 20 min" · "focus with me for 25 minutes".';
   }
 
   // "focus with me for 25 minutes" — Nomi holds the clock and keeps quiet.
@@ -130,7 +169,11 @@ export async function chatRespond(
   }
 
   const settings = await getSettings();
-  const system = personaPrompt(await todayLine(now), screenContext);
+  const system = buildSystemPrompt({
+    profile: profileNow,
+    todayContext: await todayLine(now),
+    screenContext,
+  });
   const messages = [
     ...history.slice(-8).map((m) => ({
       role: m.role === 'nomi' ? ('assistant' as const) : ('user' as const),

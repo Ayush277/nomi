@@ -1,6 +1,15 @@
 import { useEffect, useState } from 'react';
 import { geminiAvailable } from '../../lib/gemini';
 import { ollamaAvailable } from '../../lib/ollama';
+import { PERSONALITIES } from '../../lib/persona';
+import {
+  DEFAULT_PROFILE,
+  getProfile,
+  removeFact,
+  saveProfile,
+  type NomiProfile,
+  type PersonalityId,
+} from '../../lib/profile';
 import { getSettings, saveSettings } from '../../lib/settings';
 import { exportAll, wipeAll } from '../../lib/store';
 import { DEFAULT_SETTINGS, type NomiSettings } from '../../lib/types';
@@ -92,6 +101,22 @@ export function App() {
     setWipeArmed(false);
   };
 
+  const [profile, setProfile] = useState<NomiProfile>(DEFAULT_PROFILE);
+  useEffect(() => {
+    getProfile().then(setProfile);
+  }, []);
+  const updateProfile = (patch: Partial<NomiProfile>) => {
+    setProfile((prev) => {
+      const next = { ...prev, ...patch };
+      void saveProfile(next);
+      return next;
+    });
+  };
+  const forgetFact = async (id: string) => {
+    await removeFact(id);
+    setProfile(await getProfile());
+  };
+
   const quiet = settings.quietHours;
 
   return (
@@ -106,6 +131,79 @@ export function App() {
           <p>Everything here — and everything Nomi remembers — lives only on this device.</p>
         </div>
       </header>
+
+      <section>
+        <h2>You &amp; Nomi</h2>
+        <label className="row">
+          <span>
+            <strong>Your name</strong>
+            <em>So Nomi can talk to you like a person.</em>
+          </span>
+          <input
+            type="text"
+            className="model"
+            placeholder="what should I call you?"
+            value={profile.name}
+            onChange={(e) => updateProfile({ name: e.target.value.slice(0, 24) })}
+          />
+        </label>
+        <label className="row">
+          <span>
+            <strong>What you're working toward</strong>
+            <em>Your current goal — Nomi keeps it in mind.</em>
+          </span>
+          <input
+            type="text"
+            className="model"
+            style={{ width: 220 }}
+            placeholder="e.g. cracking FAANG interviews"
+            value={profile.goal}
+            onChange={(e) => updateProfile({ goal: e.target.value.slice(0, 120) })}
+          />
+        </label>
+        <label className="col">
+          <span>
+            <strong>Nomi's personality</strong>
+            <em>Same companion, different tone. Switch anytime.</em>
+          </span>
+          <div className="persona-grid">
+            {(Object.keys(PERSONALITIES) as PersonalityId[]).map((id) => (
+              <button
+                key={id}
+                className={`persona${profile.personality === id ? ' on' : ''}`}
+                onClick={() => updateProfile({ personality: id })}
+              >
+                <strong>{PERSONALITIES[id].label}</strong>
+                <span>{PERSONALITIES[id].blurb}</span>
+              </button>
+            ))}
+          </div>
+        </label>
+      </section>
+
+      <section>
+        <h2>What I remember about you</h2>
+        <p className="hint">
+          Everything Nomi has picked up or been told. Say "remember …" in chat to add, or clear any
+          of these here. Nothing leaves your device.
+        </p>
+        {profile.facts.length === 0 ? (
+          <p className="hint" style={{ opacity: 0.7 }}>
+            Nothing saved yet. In chat, try "remember I'm preparing for interviews".
+          </p>
+        ) : (
+          <ul className="facts">
+            {profile.facts.map((f) => (
+              <li key={f.id}>
+                <span>{f.text}</span>
+                <button onClick={() => forgetFact(f.id)} aria-label="Forget this">
+                  Forget
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
       <section>
         <h2>Presence</h2>

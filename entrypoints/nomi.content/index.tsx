@@ -1,4 +1,5 @@
 import ReactDOM from 'react-dom/client';
+import { extractVisibleText } from '../../lib/screen';
 import { Widget } from './Widget';
 import './widget.css';
 
@@ -23,6 +24,21 @@ export default defineContentScript({
       onRemove: (root) => root?.unmount(),
     });
     ui.mount();
+
+    // Serve the page's visible text when the background asks (chat grounding).
+    // Only the top frame answers, so we don't stitch together iframe soup.
+    if (window.top === window) {
+      chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+        if (msg?.type === 'nomi:snapshot') {
+          try {
+            sendResponse(extractVisibleText(document));
+          } catch {
+            sendResponse(null);
+          }
+          return true;
+        }
+      });
+    }
 
     // Heartbeat through ctx: when the extension reloads, this notices the
     // dead runtime and WXT unmounts the orphaned widget instead of letting
