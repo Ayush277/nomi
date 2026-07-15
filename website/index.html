@@ -238,6 +238,20 @@
   .statements .st.reveal.in b { color: var(--purple-2); }
   .statements .st.last.reveal.in span { color: var(--ink-2); font-weight: 500; font-size: 0.5em; letter-spacing: -0.02em; }
 
+  /* the docs button glows: the one link that explains everything */
+  .btn.docs {
+    color: var(--purple-2);
+    border: 1px solid rgba(139, 92, 246, 0.55);
+    background: rgba(139, 92, 246, 0.1);
+    box-shadow: 0 0 22px rgba(139, 92, 246, 0.25);
+    animation: docs-glow 3.2s ease-in-out infinite;
+  }
+  .btn.docs:hover { background: rgba(139, 92, 246, 0.2); color: #fff; transform: translateY(-2px); }
+  @keyframes docs-glow {
+    0%, 100% { box-shadow: 0 0 16px rgba(139, 92, 246, 0.2); }
+    50% { box-shadow: 0 0 30px rgba(139, 92, 246, 0.45); }
+  }
+
   /* ---------- documentation cards ---------- */
   .doc-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-top: 10px; }
   .doc-card {
@@ -312,6 +326,7 @@
       <p class="lede reveal d2">It lives beside your browser, noticing what you do, understanding it, and remembering it, so you don't have to hold it all in your head.</p>
       <div class="hero-cta reveal d3">
         <a class="btn primary" href="#features">See what it does</a>
+        <a class="btn docs" href="docs.html">Read the documentation ↗</a>
         <a class="btn ghost" href="#install">How to start</a>
         <span class="hero-note">ON-DEVICE · IN DEVELOPMENT</span>
       </div>
