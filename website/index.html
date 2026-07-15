@@ -238,6 +238,19 @@
   .statements .st.reveal.in b { color: var(--purple-2); }
   .statements .st.last.reveal.in span { color: var(--ink-2); font-weight: 500; font-size: 0.5em; letter-spacing: -0.02em; }
 
+  /* ---------- documentation cards ---------- */
+  .doc-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-top: 10px; }
+  .doc-card {
+    display: flex; flex-direction: column; gap: 6px; padding: 20px;
+    border-radius: 20px; border: 1px solid var(--line); background: var(--glass);
+    color: inherit; text-decoration: none;
+    transition: transform 0.3s var(--ease), border-color 0.3s ease, background 0.3s ease;
+  }
+  .doc-card:hover { transform: translateY(-4px); border-color: rgba(139, 92, 246, 0.45); background: rgba(139, 92, 246, 0.07); }
+  .doc-card .dc-k { font-family: var(--mono); font-size: 11px; color: var(--purple-2); letter-spacing: 0.14em; }
+  .doc-card b { font-size: 15.5px; font-weight: 650; }
+  .doc-card > span:last-child { font-size: 12.5px; color: var(--ink-3); line-height: 1.5; }
+
   /* ---------- feedback ---------- */
   .fb { max-width: 640px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; }
   .fb-field { display: flex; flex-direction: column; gap: 8px; }
@@ -259,6 +272,7 @@
     .hero { grid-template-columns: 1fr; gap: 20px; text-align: left; }
     .nomi-stage { height: 320px; margin-top: 10px; }
     .grid, .grid.two, .steps { grid-template-columns: 1fr; }
+    .doc-cards { grid-template-columns: 1fr 1fr; }
     .panel.wide { grid-template-columns: 1fr; }
     .nav-links { display: none; }
   }
@@ -283,6 +297,7 @@
       <a href="#intelligence">Intelligence</a>
       <a href="#features">Features</a>
       <a href="#privacy">Privacy</a>
+      <a href="docs.html">Docs</a>
     </div>
     <span class="nav-pill">BETA</span>
   </div>
@@ -424,6 +439,23 @@
       <button class="btn primary" type="submit" id="fbBtn">Send feedback</button>
       <p class="fb-note" id="fbNote">No account needed. Your note goes directly to the maker.</p>
     </form>
+  </section>
+
+  <section id="docs-cta">
+    <div class="head">
+      <span class="eyebrow reveal">Documentation</span>
+      <h2 class="reveal d1">Look inside.</h2>
+      <p class="lede reveal d2" style="max-width:54ch">How a question becomes an answer, the architecture that survives a dying service worker, the RAG pipeline with zero infrastructure, the voice loop, and every feature. With real screenshots and diagrams.</p>
+    </div>
+    <div class="doc-cards reveal d2">
+      <a class="doc-card" href="docs.html#answer"><span class="dc-k">03</span><b>How it answers</b><span>intents first, AI when it earns it, never the same reply twice</span></a>
+      <a class="doc-card" href="docs.html#architecture"><span class="dc-k">04</span><b>Architecture</b><span>no server; a stateless worker, encrypted storage, alarms</span></a>
+      <a class="doc-card" href="docs.html#rag"><span class="dc-k">06</span><b>RAG</b><span>semantic search over your docs and days, no vector DB</span></a>
+      <a class="doc-card" href="docs.html#voice"><span class="dc-k">07</span><b>Voice</b><span>talk to it, it talks back, silence ends the conversation</span></a>
+    </div>
+    <div class="cta reveal d3" style="margin-top:26px">
+      <a class="btn primary" href="docs.html">Read the documentation</a>
+    </div>
   </section>
 
   <section class="closing">

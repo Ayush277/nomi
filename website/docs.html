@@ -1,0 +1,332 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Nomi · Documentation</title>
+<meta name="description" content="How Nomi works inside: architecture, the memory pipeline, RAG, the answer pipeline, voice, features, and the tech stack. With real screenshots and diagrams." />
+<style>
+  :root {
+    --bg: #090909; --ink: #f5f6f8; --ink-2: rgba(245,246,248,0.6); --ink-3: rgba(245,246,248,0.36);
+    --purple: #8b5cf6; --purple-2: #a78bfa; --deep: #6d28d9;
+    --glass: rgba(255,255,255,0.04); --line: rgba(255,255,255,0.09); --r: 24px;
+    --sans: -apple-system, 'SF Pro Display', BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif;
+    --mono: ui-monospace, 'SF Mono', Menlo, monospace;
+    --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: radial-gradient(1000px 500px at 50% -10%, rgba(109,40,217,0.14), transparent 65%), var(--bg);
+    color: var(--ink); font-family: var(--sans); -webkit-font-smoothing: antialiased; line-height: 1.6;
+  }
+  .wrap { max-width: 1000px; margin: 0 auto; padding: 0 24px; }
+
+  nav {
+    position: sticky; top: 14px; z-index: 50; max-width: 1000px; margin: 14px auto 0; padding: 10px 22px;
+    display: flex; align-items: center; justify-content: space-between;
+    background: rgba(12,12,14,0.72); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+    border: 1px solid var(--line); border-radius: 9999px;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 17px; letter-spacing: -0.02em; color: inherit; text-decoration: none; }
+  .nomi-mini { position: relative; width: 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; gap: 4px; background: radial-gradient(circle at 36% 27%, #f0ecff, #a78bfa 42%, #8b5cf6 72%, #6d28d9); box-shadow: 0 0 14px rgba(139,92,246,0.65), inset 1px 2px 4px rgba(255,255,255,0.55); }
+  .nomi-mini i { width: 3px; height: 3px; border-radius: 50%; background: #fff; box-shadow: 0 0 3px rgba(255,255,255,0.9); }
+  nav .links { display: flex; gap: 18px; font-size: 13.5px; }
+  nav .links a { color: var(--ink-2); text-decoration: none; }
+  nav .links a:hover { color: var(--ink); }
+
+  header.doc-head { padding: 90px 0 30px; text-align: left; }
+  .eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: 0.22em; text-transform: uppercase; color: var(--purple-2); }
+  h1 { font-size: clamp(40px, 7vw, 72px); font-weight: 700; letter-spacing: -0.045em; line-height: 1.02; margin-top: 14px; }
+  h1 b { color: var(--purple-2); font-weight: 700; }
+  .lede { margin-top: 18px; max-width: 56ch; font-size: 17px; color: var(--ink-2); }
+
+  /* table of contents */
+  .toc { margin-top: 34px; display: flex; flex-wrap: wrap; gap: 8px; }
+  .toc a { font-family: var(--mono); font-size: 12px; color: var(--ink-2); text-decoration: none; border: 1px solid var(--line); border-radius: 9999px; padding: 7px 14px; transition: all 0.25s ease; }
+  .toc a:hover { color: var(--purple-2); border-color: rgba(139,92,246,0.5); }
+
+  section { padding: 54px 0 10px; }
+  h2 { font-size: clamp(26px, 4vw, 38px); font-weight: 700; letter-spacing: -0.03em; margin-bottom: 6px; }
+  .sub { color: var(--ink-3); font-size: 14.5px; margin-bottom: 26px; }
+  h3 { font-size: 18px; font-weight: 650; margin: 26px 0 8px; }
+  p.body { color: var(--ink-2); font-size: 15px; max-width: 72ch; margin-bottom: 12px; }
+
+  figure { margin: 18px 0 8px; }
+  figure img { width: 100%; border-radius: var(--r); border: 1px solid var(--line); display: block; }
+  figcaption { font-family: var(--mono); font-size: 11.5px; color: var(--ink-3); margin-top: 10px; letter-spacing: 0.04em; }
+
+  .shots { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; margin-top: 10px; }
+  .shots figure { margin: 0; }
+
+  ul.feat { list-style: none; margin: 8px 0 6px; max-width: 76ch; }
+  ul.feat li { padding: 9px 0 9px 26px; position: relative; color: var(--ink-2); font-size: 14.5px; border-bottom: 1px solid rgba(255,255,255,0.05); }
+  ul.feat li::before { content: '·'; position: absolute; left: 6px; color: var(--purple-2); font-weight: 700; }
+  ul.feat b { color: var(--ink); font-weight: 600; }
+
+  .cols2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 40px; }
+
+  table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 14px; }
+  th { text-align: left; font-family: var(--mono); font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--purple-2); padding: 10px 14px 10px 0; border-bottom: 1px solid var(--line); }
+  td { padding: 11px 14px 11px 0; color: var(--ink-2); border-bottom: 1px solid rgba(255,255,255,0.05); vertical-align: top; }
+  td:first-child { color: var(--ink); font-weight: 600; white-space: nowrap; }
+  .tablewrap { overflow-x: auto; }
+
+  .callout { margin: 20px 0; padding: 18px 22px; border-radius: 18px; background: rgba(139,92,246,0.07); border: 1px solid rgba(139,92,246,0.22); color: var(--ink-2); font-size: 14.5px; max-width: 76ch; }
+  .callout b { color: var(--purple-2); }
+  code { font-family: var(--mono); font-size: 0.92em; background: rgba(255,255,255,0.06); border-radius: 6px; padding: 1.5px 6px; }
+
+  .steps { counter-reset: st; max-width: 76ch; margin-top: 8px; }
+  .step { counter-increment: st; display: grid; grid-template-columns: 42px 1fr; gap: 14px; padding: 14px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
+  .step::before { content: counter(st, decimal-leading-zero); font-family: var(--mono); color: var(--purple-2); font-size: 13px; padding-top: 3px; }
+  .step b { display: block; font-size: 15px; margin-bottom: 3px; }
+  .step span { color: var(--ink-2); font-size: 14px; }
+
+  footer { margin-top: 80px; border-top: 1px solid var(--line); padding: 36px 0 50px; }
+  .foot { display: flex; justify-content: space-between; align-items: center; color: var(--ink-3); font-size: 13.5px; flex-wrap: wrap; gap: 14px; }
+  .foot a { color: var(--ink-2); text-decoration: none; border-bottom: 1px solid rgba(255,255,255,0.18); }
+  .foot a:hover { color: var(--purple-2); border-color: var(--purple-2); }
+
+  @media (max-width: 760px) {
+    .shots, .cols2 { grid-template-columns: 1fr; }
+    nav .links { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <a class="brand" href="./index.html"><span class="nomi-mini"><i></i><i></i></span>Nomi</a>
+  <div class="links">
+    <a href="#gallery">Screenshots</a>
+    <a href="#features">Features</a>
+    <a href="#answer">How it answers</a>
+    <a href="#architecture">Architecture</a>
+    <a href="#rag">RAG</a>
+    <a href="#stack">Tech stack</a>
+    <a href="./index.html">← Home</a>
+  </div>
+</nav>
+
+<div class="wrap">
+
+  <header class="doc-head">
+    <span class="eyebrow">Documentation · Beta</span>
+    <h1>How <b>Nomi</b> works.</h1>
+    <p class="lede">
+      The full picture: what Nomi looks like, how a question becomes an answer, the architecture
+      that survives a service worker that dies every 30 seconds, the RAG pipeline with zero
+      infrastructure, and every feature it ships with. Everything below runs on your device.
+    </p>
+    <div class="toc">
+      <a href="#gallery">01 · Screenshots</a>
+      <a href="#features">02 · Features</a>
+      <a href="#answer">03 · How it answers</a>
+      <a href="#architecture">04 · Architecture</a>
+      <a href="#memory">05 · Memory pipeline</a>
+      <a href="#rag">06 · RAG</a>
+      <a href="#voice">07 · Voice</a>
+      <a href="#stack">08 · Tech stack</a>
+      <a href="#ai">09 · How the AI is used</a>
+    </div>
+  </header>
+
+  <section id="gallery">
+    <h2>01 · What Nomi looks like</h2>
+    <p class="sub">real screenshots, current build</p>
+    <div class="shots">
+      <figure>
+        <img src="images/widget-satellites.png" alt="Nomi's orb on a live page with satellite status chips around it" loading="lazy" />
+        <figcaption>THE COMPANION · the glass orb lives on every page; satellite chips orbit it with live status: timer countdown, reminders, saved links</figcaption>
+      </figure>
+      <figure>
+        <img src="images/dashboard.png" alt="The second brain dashboard" loading="lazy" />
+        <figcaption>THE SECOND BRAIN · time analytics, study-vs-drift analysis, a calendar of every remembered day, documents, the bag</figcaption>
+      </figure>
+      <figure>
+        <img src="images/settings.png" alt="Phone-style settings page" loading="lazy" />
+        <figcaption>SETTINGS · phone-style grouped rows, switches, and drawers; personality, quiet hours, privacy, AI brains</figcaption>
+      </figure>
+      <figure>
+        <img src="images/welcome.png" alt="The first-run welcome page" loading="lazy" />
+        <figcaption>THE WELCOME · first run: meet the orb, three privacy promises, pick a name and a vibe</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section id="features">
+    <h2>02 · Features</h2>
+    <p class="sub">everything it does today, grouped</p>
+    <div class="cols2">
+      <div>
+        <h3>Observation &amp; memory</h3>
+        <ul class="feat">
+          <li><b>Time tracking</b> per site and category, with sessions built from tab focus and idle signals</li>
+          <li><b>AES-GCM encryption at rest</b> for every event; export or erase anytime</li>
+          <li><b>Daily rollups</b> compact raw events into tiny forever-summaries</li>
+          <li><b>Site adapters</b> (whitelisted only): LeetCode accepted submissions, YouTube titles, GfG</li>
+          <li><b>Learned profile</b> after 3+ days: peak hours, main tech, top project, distractions</li>
+          <li><b>Change tracking</b>: week-over-week diffs of how you're shifting</li>
+        </ul>
+        <h3>Knowledge &amp; RAG</h3>
+        <ul class="feat">
+          <li><b>Nomi Space</b>: upload PDFs and notes; chat answers from your material first</li>
+          <li><b>Semantic search</b> over documents and your days, with keyword fallback</li>
+          <li><b>The living document</b>: an auto-written, readable file about you, with daily log and weekly reviews</li>
+        </ul>
+        <h3>Voice</h3>
+        <ul class="feat">
+          <li><b>Hold to talk</b>, Hinglish included; replies spoken with the best system voice</li>
+          <li><b>Conversation mode</b>: after it answers, the mic opens once for a follow-up</li>
+          <li><b>Tap the orb to stop it</b> mid-sentence; proactive bubbles are always silent</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Companion intelligence</h3>
+        <ul class="feat">
+          <li><b>Morning brief</b>: yesterday's shape, today's reminders, the open loop to resume</li>
+          <li><b>Open-loop resume</b>: "what was I doing?" returns the deep session you abandoned, with a link</li>
+          <li><b>Weekly review + goal check-in</b>: Sunday digest with the trend toward your goal</li>
+          <li><b>Study-vs-drift</b>: was YouTube during study a tutorial or cat videos? Judged from actual on-screen titles</li>
+          <li><b>Personal bag</b>: "save this page", verified counts, recall as clickable links, spaced resurfacing</li>
+          <li><b>Reminders &amp; timers</b> in natural language, including spoken corrections</li>
+          <li><b>Journal</b>: "I applied to a job" is logged; "how many this week?" is counted</li>
+          <li><b>Wellbeing</b>: late-night marathons earn a gentle, evidence-based check-in</li>
+          <li><b>Never-repeat guard</b>: asking twice never gets the same canned line twice</li>
+        </ul>
+        <h3>Hard rules</h3>
+        <ul class="feat">
+          <li><b>Never acts for you</b>: no clicking, no typing, no automation, ever</li>
+          <li><b>Structurally can't read</b> keystrokes, passwords, or form fields</li>
+          <li><b>Banking, health, mail</b> stay invisible; incognito reads nothing; no telemetry</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section id="answer">
+    <h2>03 · How a question becomes an answer</h2>
+    <p class="sub">deterministic first, AI when it earns it</p>
+    <figure>
+      <img src="images/flow-answer.svg" alt="The answer pipeline: intent handlers, grounding, provider chain, never-repeat guard" loading="lazy" />
+    </figure>
+    <div class="steps">
+      <div class="step"><div><b>Intent handlers run first</b><span>30+ deterministic handlers (saves, recalls, reminders, journal, "what was I doing") answer instantly, free, with zero model calls. About 70% of questions end here.</span></div></div>
+      <div class="step"><div><b>Grounding is assembled</b><span>Persona, profile, today's summary, live context, the top document passages, and related day-memories are packed into the prompt, with a rule: answer exactly, and say "I don't have that" instead of inventing.</span></div></div>
+      <div class="step"><div><b>The reasoning agent loops when needed</b><span>For multi-step questions, a ReAct loop lets the model call local tools (memory, docs, today, profile, page), read the evidence, and only then answer.</span></div></div>
+      <div class="step"><div><b>Providers degrade gracefully</b><span>Gemini with your own key, then Ollama fully local, then a free fallback, then an honest canned reply. A quota error never reads as silence.</span></div></div>
+      <div class="step"><div><b>The never-repeat guard</b><span>If the reply would be identical to the last one, Nomi re-answers from ground truth (real bag contents, reminder counts) instead of repeating itself.</span></div></div>
+    </div>
+  </section>
+
+  <section id="architecture">
+    <h2>04 · Architecture</h2>
+    <p class="sub">everything runs inside the browser · no server</p>
+    <figure>
+      <img src="images/flow-architecture.svg" alt="System architecture: page widget, MV3 service worker, on-device storage, optional AI providers" loading="lazy" />
+    </figure>
+    <div class="callout">
+      <b>The defining constraint:</b> Chrome kills the MV3 service worker after about 30 seconds of
+      inactivity. So every handler is cold-start safe, all timing runs on <code>chrome.alarms</code>,
+      and all state lives in storage, never in memory. The in-flight browsing session is checkpointed
+      so a worker death mid-session loses nothing.
+    </div>
+  </section>
+
+  <section id="memory">
+    <h2>05 · The memory pipeline</h2>
+    <p class="sub">from a tab switch to a fact Nomi can quote</p>
+    <figure>
+      <img src="images/flow-memory.svg" alt="The memory pipeline: events, privacy gate, encrypted storage, sessions, rollups, learned profile, living document, RAG index" loading="lazy" />
+    </figure>
+    <p class="body">
+      Every URL passes a privacy gate before anything is stored: sensitive categories are blocked,
+      the user's exclusions honored, query strings stripped, incognito ignored. What survives is
+      encrypted with AES-GCM into IndexedDB. Raw detail is kept for a week, then compacted into
+      daily rollups that stay tiny forever. From three days of rollups Nomi learns patterns, and
+      it writes what it learns into a document you can open and read.
+    </p>
+  </section>
+
+  <section id="rag">
+    <h2>06 · RAG with zero infrastructure</h2>
+    <p class="sub">semantic search, no vector DB, no server</p>
+    <figure>
+      <img src="images/flow-rag.svg" alt="RAG pipeline: chunking with overlap, embedding fallback chain, vector cache, hybrid scoring, query rewriting" loading="lazy" />
+    </figure>
+    <div class="steps">
+      <div class="step"><div><b>Write path, once per document</b><span>Text is chunked to ~700 characters on sentence boundaries, each chunk carrying the previous chunk's last sentence so answers that straddle a boundary stay whole. Chunks are embedded (local Ollama model first, Gemini second, keyword-only if neither) and the vectors cached by content hash.</span></div></div>
+      <div class="step"><div><b>Read path, every question</b><span>The query is embedded and every passage scored with a hybrid: 65% meaning similarity plus 35% keyword overlap. Passages with no signal are filtered so answers never ground on noise. The top passages ride into the prompt.</span></div></div>
+      <div class="step"><div><b>Query rewriting</b><span>If a real question returns thin results, one cheap model call expands it with synonyms ("throttle" finds "rate limiting") and retrieval runs once more.</span></div></div>
+      <div class="step"><div><b>Day-memory too</b><span>Every remembered day and journal entry becomes a dated passage in the same index, so "when did I research visas?" finds the right day by meaning.</span></div></div>
+    </div>
+    <div class="callout">
+      <b>Why no vector database?</b> At this scale, brute-force cosine in JavaScript runs in
+      single-digit milliseconds. A vector DB would add infrastructure, network hops, and privacy
+      surface for zero user-visible gain. The tool is sized to the data.
+    </div>
+  </section>
+
+  <section id="voice">
+    <h2>07 · The voice loop</h2>
+    <p class="sub">Nomi speaks only when spoken to</p>
+    <figure>
+      <img src="images/flow-voice.svg" alt="Voice pipeline: mic capture in an offscreen document, Gemini transcription, the same chat brain, spoken reply, follow-up listening" loading="lazy" />
+    </figure>
+    <p class="body">
+      MV3 workers can't touch the microphone, so an offscreen document captures the clip; Gemini
+      transcribes it (Hinglish included) and the text runs through the exact same brain as typed
+      chat. The reply is spoken with the best local system voice, sentence-chunked to beat Chrome's
+      utterance cutoff. When it finishes, the mic opens once for a follow-up; silence ends the
+      conversation, and tapping the orb stops it mid-sentence.
+    </p>
+  </section>
+
+  <section id="stack">
+    <h2>08 · Tech stack</h2>
+    <p class="sub">and why each piece was chosen</p>
+    <div class="tablewrap">
+      <table>
+        <tr><th>Layer</th><th>Choice</th><th>Why</th></tr>
+        <tr><td>Extension</td><td>WXT + TypeScript (MV3)</td><td>modern tooling, file-based entrypoints, strict types across ~13K lines</td></tr>
+        <tr><td>UI</td><td>React 18 in a Shadow DOM</td><td>page CSS can't leak into the widget, and the widget can't leak out</td></tr>
+        <tr><td>Storage</td><td>IndexedDB (Dexie) + chrome.storage</td><td>indexed event stream on one side, cross-context state on the other</td></tr>
+        <tr><td>Encryption</td><td>Web Crypto AES-GCM</td><td>native audited primitive; every record encrypted at rest</td></tr>
+        <tr><td>Cloud AI (optional)</td><td>Gemini, the user's own key</td><td>chat, transcription, vision, and embeddings behind one key</td></tr>
+        <tr><td>Local AI (optional)</td><td>Ollama at localhost</td><td>fully local chat plus nomic-embed-text for on-device semantic search</td></tr>
+        <tr><td>Testing</td><td>Vitest · 247 tests, 34 suites</td><td>the engines are pure functions, so the logic tests without a browser</td></tr>
+        <tr><td>PDF</td><td>pdf.js, bundled</td><td>no remote code, a Chrome Web Store hard requirement</td></tr>
+      </table>
+    </div>
+    <div class="callout">
+      <b>Deliberate non-choices:</b> no backend server (privacy and zero cost), no vector database
+      (see above), no agent framework (the reasoning loop is ~100 lines, and owning every line
+      matters in a worker that dies mid-flight).
+    </div>
+  </section>
+
+  <section id="ai">
+    <h2>09 · How the AI is used</h2>
+    <p class="sub">honest by design</p>
+    <ul class="feat">
+      <li><b>Deterministic before generative.</b> Anything with a factual store behind it (your bag, reminders, journal, time stats) is answered by code, not a model. The model handles open questions, and only with grounding attached.</li>
+      <li><b>Grounded, or it says so.</b> Prompts carry retrieved passages and live ground truth with an explicit instruction to admit gaps rather than invent. Messages only claim what the event data honestly supports.</li>
+      <li><b>Your key, your machine, your choice.</b> By default nothing leaves the device. Turning on Gemini sends your chat text and a one-line day summary to Google under your own key. Ollama keeps even that local. Both are optional; everything else works without them.</li>
+      <li><b>The LLM never sees raw history.</b> It sees compact, purpose-built context blocks: a day summary, top passages, a companion brief. Retrieval decides what is relevant; the model never trawls your data.</li>
+      <li><b>Every AI feature degrades.</b> No key, no Ollama, no network: Nomi still tracks, remembers, reminds, saves, and answers factual questions. Intelligence is a layer, not a dependency.</li>
+    </ul>
+  </section>
+
+</div>
+
+<footer>
+  <div class="wrap foot">
+    <a class="brand" href="./index.html" style="font-size:15px"><span class="nomi-mini"><i></i><i></i></span>Nomi</a>
+    <span>Observe · Understand · Remember · Never control</span>
+    <span><a href="https://www.linkedin.com/in/ayushkumar277" target="_blank" rel="noopener">LinkedIn</a> · <a href="https://github.com/Ayush277" target="_blank" rel="noopener">GitHub</a></span>
+    <span>© 2026 · Beta</span>
+  </div>
+</footer>
+
+</body>
+</html>

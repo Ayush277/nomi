@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="600" viewBox="0 0 1080 600" font-family="ui-monospace,SF Mono,Menlo,monospace">
+  <defs>
+    <marker id="r" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0L8,3L0,6z" fill="#a78bfa"/></marker>
+    <radialGradient id="orb4" cx="36%" cy="27%"><stop offset="0%" stop-color="#f0ecff"/><stop offset="46%" stop-color="#a78bfa"/><stop offset="100%" stop-color="#6d28d9"/></radialGradient>
+  </defs>
+  <rect width="1080" height="600" rx="18" fill="#0b0a10"/>
+  <text x="40" y="52" fill="#f5f6f8" font-size="22" font-weight="700" font-family="-apple-system,SF Pro Display,sans-serif">RAG with zero infrastructure</text>
+  <text x="40" y="76" fill="#8b87a0" font-size="13">semantic search over documents and days — no vector DB, no server</text>
+  <circle cx="1010" cy="56" r="22" fill="url(#orb4)"/><circle cx="1003" cy="54" r="3" fill="#fff"/><circle cx="1017" cy="54" r="3" fill="#fff"/>
+
+  <text x="40" y="122" fill="#a78bfa" font-size="12" letter-spacing="2">WRITE PATH · ONCE PER DOCUMENT</text>
+  <rect x="40" y="136" width="200" height="76" rx="14" fill="#1a1526" stroke="#3b2f5c"/>
+  <text x="56" y="164" fill="#f5f6f8" font-size="14" font-weight="600">Upload / auto-doc</text>
+  <text x="56" y="186" fill="#8b87a0" font-size="11.5">PDF (pdf.js) · text · md ·</text>
+  <text x="56" y="200" fill="#8b87a0" font-size="11.5">rollups · journal entries</text>
+
+  <line x1="240" y1="174" x2="274" y2="174" stroke="#a78bfa" stroke-width="2" marker-end="url(#r)"/>
+  <rect x="280" y="136" width="220" height="76" rx="14" fill="#1a1526" stroke="#3b2f5c"/>
+  <text x="296" y="164" fill="#f5f6f8" font-size="14" font-weight="600">Chunk ~700 chars</text>
+  <text x="296" y="186" fill="#8b87a0" font-size="11.5">sentence boundaries +</text>
+  <text x="296" y="200" fill="#8b87a0" font-size="11.5">160-char overlap carry-over</text>
+
+  <line x1="500" y1="174" x2="534" y2="174" stroke="#a78bfa" stroke-width="2" marker-end="url(#r)"/>
+  <rect x="540" y="136" width="250" height="76" rx="14" fill="#1a1526" stroke="#7c3aed"/>
+  <text x="556" y="164" fill="#c4b5fd" font-size="14" font-weight="600">Embed (fallback chain)</text>
+  <text x="556" y="186" fill="#8b87a0" font-size="11.5">Ollama nomic-embed-text →</text>
+  <text x="556" y="200" fill="#8b87a0" font-size="11.5">Gemini → keyword-only mode</text>
+
+  <line x1="790" y1="174" x2="824" y2="174" stroke="#a78bfa" stroke-width="2" marker-end="url(#r)"/>
+  <rect x="830" y="136" width="210" height="76" rx="14" fill="#1a1526" stroke="#3b2f5c"/>
+  <text x="846" y="164" fill="#f5f6f8" font-size="14" font-weight="600">Vector cache</text>
+  <text x="846" y="186" fill="#8b87a0" font-size="11.5">quantized, keyed by content</text>
+  <text x="846" y="200" fill="#8b87a0" font-size="11.5">hash — embedded once</text>
+
+  <text x="40" y="266" fill="#a78bfa" font-size="12" letter-spacing="2">READ PATH · EVERY QUESTION</text>
+  <rect x="40" y="280" width="180" height="70" rx="14" fill="#1a1526" stroke="#3b2f5c"/>
+  <text x="56" y="308" fill="#f5f6f8" font-size="14" font-weight="600">Embed query</text>
+  <text x="56" y="330" fill="#8b87a0" font-size="11.5">same provider as index</text>
+
+  <line x1="220" y1="315" x2="254" y2="315" stroke="#a78bfa" stroke-width="2" marker-end="url(#r)"/>
+  <rect x="260" y="280" width="300" height="70" rx="14" fill="#1a1526" stroke="#7c3aed"/>
+  <text x="276" y="304" fill="#c4b5fd" font-size="14" font-weight="600">Hybrid score every passage</text>
+  <text x="276" y="326" fill="#e8e6f0" font-size="12">0.65 · cosine  +  0.35 · keyword(sat. 3)</text>
+  <text x="276" y="342" fill="#8b87a0" font-size="11">no signal at all → filtered out</text>
+
+  <line x1="560" y1="315" x2="594" y2="315" stroke="#a78bfa" stroke-width="2" marker-end="url(#r)"/>
+  <rect x="600" y="280" width="200" height="70" rx="14" fill="#1a1526" stroke="#3b2f5c"/>
+  <text x="616" y="308" fill="#f5f6f8" font-size="14" font-weight="600">Top-k passages</text>
+  <text x="616" y="330" fill="#8b87a0" font-size="11.5">docs: 5 · day-memory: 3</text>
+
+  <line x1="800" y1="315" x2="834" y2="315" stroke="#a78bfa" stroke-width="2" marker-end="url(#r)"/>
+  <rect x="840" y="280" width="200" height="70" rx="14" fill="#1a1526" stroke="#3b2f5c"/>
+  <text x="856" y="308" fill="#f5f6f8" font-size="14" font-weight="600">Into the prompt</text>
+  <text x="856" y="330" fill="#8b87a0" font-size="11.5">"[doc] passage" blocks</text>
+
+  <rect x="260" y="386" width="540" height="64" rx="14" fill="#131019" stroke="#2c2440"/>
+  <text x="276" y="412" fill="#f5f6f8" font-size="13" font-weight="600">Thin results (&lt;2 hits)? → one LLM call rewrites the query with synonyms, retrieve once more</text>
+  <text x="276" y="434" fill="#8b87a0" font-size="11.5">"how do I throttle requests?"  +  "rate limiting debounce backoff"  →  finds the note keyword search missed</text>
+  <line x1="410" y1="350" x2="410" y2="382" stroke="#a78bfa" stroke-width="2" stroke-dasharray="5 4" marker-end="url(#r)"/>
+
+  <text x="40" y="502" fill="#f5f6f8" font-size="14" font-weight="600" font-family="-apple-system,sans-serif">Why no vector database?</text>
+  <text x="40" y="526" fill="#8b87a0" font-size="12.5">At 10²–10⁴ vectors, brute-force cosine in JS runs in single-digit milliseconds. A vector DB would add</text>
+  <text x="40" y="546" fill="#8b87a0" font-size="12.5">infrastructure, network hops, and privacy surface for zero user-visible gain. Size the tool to the data.</text>
+</svg>
