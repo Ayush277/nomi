@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Render the Nomi ball (3D glowing purple-blue glass orb with two small white
-eyes) to public/icon/{size}.png. Pure stdlib — no Pillow."""
+"""Render the Nomi ball — a serene blue glass orb with two small white eyes —
+to public/icon/{size}.png. Pure stdlib, no Pillow."""
 
 import math
 import os
@@ -18,26 +18,23 @@ def lerp(a, b, t):
 def render(size):
     c = size / 2.0
     radius = c * 0.86
-    # eye geometry
     eye_dx = size * 0.15
     eye_dy = size * 0.06
     eye_r = max(1.0, size * 0.055)
-    # colour stops for the sphere (top-light -> deep purple-blue)
-    HILIGHT = (244, 240, 255)
-    MID = (168, 150, 255)
-    DEEP = (108, 92, 210)
-    EDGE = (86, 70, 190)
+    # serene blue glass stops (top-light -> deep blue)
+    HILIGHT = (236, 246, 255)
+    MID = (147, 197, 253)
+    DEEP = (59, 130, 246)
+    EDGE = (37, 99, 235)
     rows = []
     for y in range(size):
         row = bytearray()
         for x in range(size):
             px, py = x + 0.5, y + 0.5
             dist = math.hypot(px - c, py - c)
-            # soft anti-aliased alpha at the rim + a glow halo outside
             if dist <= radius:
                 cover = min(1.0, radius - dist + 0.8)
                 alpha = 235 * cover
-                # sphere shading: light from top-left (~34%,30%)
                 lx, ly = c - radius * 0.32, c - radius * 0.4
                 ld = math.hypot(px - lx, py - ly) / (radius * 1.7)
                 ld = max(0.0, min(1.0, ld))
@@ -47,11 +44,9 @@ def render(size):
                     r, g, b = lerp(MID, DEEP, (ld - 0.28) / 0.42)
                 else:
                     r, g, b = lerp(DEEP, EDGE, (ld - 0.7) / 0.3)
-                # bottom inner shadow for depth
                 if py > c:
                     sh = min(1.0, (py - c) / radius) * 0.28
                     r, g, b = (v * (1 - sh) for v in (r, g, b))
-                # eyes (two white dots, upper-centre)
                 for ex in (c - eye_dx, c + eye_dx):
                     ed = math.hypot(px - ex, py - (c + eye_dy))
                     if ed < eye_r:
@@ -61,11 +56,10 @@ def render(size):
                         b = b + (255 - b) * k
                 row += struct.pack('4B', int(r), int(g), int(b), int(alpha))
             else:
-                # glow halo fading out
                 halo = max(0.0, 1.0 - (dist - radius) / (size * 0.14))
                 if halo > 0:
                     a = int(120 * halo * halo)
-                    row += struct.pack('4B', 150, 130, 255, a)
+                    row += struct.pack('4B', 96, 165, 250, a)
                 else:
                     row += b'\x00\x00\x00\x00'
         rows.append(bytes(row))

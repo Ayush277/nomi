@@ -115,6 +115,62 @@ describe('guardrails (silence is a feature)', () => {
   });
 });
 
+describe('V2 proactive rules (Upgrade 10)', () => {
+  const intention = (over: Record<string, unknown> = {}) => ({
+    id: 'i1',
+    title: 'finish the resume',
+    confidence: 0.85,
+    priority: 'high' as const,
+    deadline: null,
+    status: 'open' as const,
+    relatedProject: null,
+    estimatedEffort: 'deep' as const,
+    createdTs: NOW - 6 * 3600000,
+    lastInteractionTs: NOW - 6 * 3600000,
+    source: 'phrase' as const,
+    ...over,
+  });
+
+  it('nudges about a voiced intention gone untouched for hours, with the evidence', () => {
+    const n = runNudgeEngine(
+      ctx({ openIntentions: [intention()], state: { ...structuredClone(EMPTY_NUDGE_STATE), greetedOn: '2026-07-10' } }),
+    );
+    expect(n?.ruleId).toBe('intention-ignored');
+    expect(n?.text).toContain('finish the resume'); // the evidence is in the message
+  });
+
+  it('does not nudge about a fresh intention', () => {
+    const n = runNudgeEngine(
+      ctx({
+        openIntentions: [intention({ createdTs: NOW - 10 * 60000, lastInteractionTs: NOW - 10 * 60000 })],
+        state: { ...structuredClone(EMPTY_NUDGE_STATE), greetedOn: '2026-07-10' },
+      }),
+    );
+    expect(n).toBeNull();
+  });
+
+  it('notices being stuck after a long single-problem stretch, past the focus ack', () => {
+    // focus-streak already fired (on cooldown), so the longer no-progress
+    // stretch surfaces as "stuck" — an escalation, not a duplicate.
+    const state = {
+      ...structuredClone(EMPTY_NUDGE_STATE),
+      greetedOn: '2026-07-10',
+      lastAnyAt: NOW - 30 * 60000,
+      lastFiredAt: { 'focus-streak': NOW - 30 * 60000 },
+    };
+    const n = runNudgeEngine(ctx({ currentVisit: codingVisit(80), state }));
+    expect(n?.ruleId).toBe('stuck');
+    expect(n?.text).toContain('80');
+  });
+
+  it('a solved verdict beats the stuck rule (win, not nag)', () => {
+    const n = runNudgeEngine(
+      ctx({ currentVisit: codingVisit(80), recentEvents: [winEvent(NOW - 30000)] }),
+    );
+    expect(n?.ruleId).toBe('leetcode-win');
+  });
+});
+
 describe('voice', () => {
   it('rotates variants so Nomi never repeats itself back-to-back', () => {
     const a = pickVariant('hydration', {});

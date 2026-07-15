@@ -2,6 +2,8 @@
  * Small and sync-friendly, so it lives in chrome.storage.local (not the
  * encrypted event DB): the widget, background, and options all read it. */
 
+import type { LearnedProfile } from './types';
+
 export type PersonalityId = 'friend' | 'coach' | 'mentor' | 'strict';
 
 export interface UserFact {
@@ -19,6 +21,9 @@ export interface NomiProfile {
   facts: UserFact[];
   /** True once the guided first-run has been completed. */
   onboarded: boolean;
+  /** Slowly-learned behavioural traits (V2 Upgrade 6); absent until enough
+   * days of evidence accumulate. */
+  learned?: LearnedProfile;
 }
 
 export const PROFILE_KEY = 'nomi:profile';

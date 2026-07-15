@@ -90,6 +90,54 @@ export async function geminiTranscribe(opts: {
   model: string;
   b64: string;
   mime: string;
+  language?: 'en' | 'hinglish';
+}): Promise<string> {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 25000);
+  const instruction =
+    opts.language === 'hinglish'
+      ? 'Transcribe this speech exactly as spoken. The speaker mixes Hindi and English (Hinglish) — write Hindi words in Roman/Latin script (e.g. "kya haal hai", "mujhe yaad dila do"), keep English words as English. Reply with ONLY the transcript text — no quotes, no commentary, no Devanagari. If there is no intelligible speech, reply with an empty response.'
+      : 'Transcribe this speech exactly as spoken. Reply with ONLY the transcript text — no quotes, no commentary. If there is no intelligible speech, reply with an empty response.';
+  try {
+    const res = await fetch(`${BASE}/${encodeURIComponent(opts.model)}:generateContent`, {
+      method: 'POST',
+      signal: ctrl.signal,
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': opts.apiKey },
+      body: JSON.stringify({
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              { text: instruction },
+              { inlineData: { mimeType: opts.mime, data: opts.b64 } },
+            ],
+          },
+        ],
+        generationConfig: { maxOutputTokens: 200, temperature: 0 },
+      }),
+    });
+    if (!res.ok) throw new Error(`gemini ${res.status}`);
+    const json = await res.json();
+    return (
+      json?.candidates?.[0]?.content?.parts
+        ?.map((p: { text?: string }) => p.text ?? '')
+        .join('')
+        .trim() ?? ''
+    );
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+/** Vision (V2 Upgrade 4): send one captured frame + an extraction prompt, get
+ * back the model's text (the caller parses it into structure). The image is the
+ * caller's to discard — this function keeps no copy. */
+export async function geminiVision(opts: {
+  apiKey: string;
+  model: string;
+  b64: string;
+  mime: string;
+  prompt: string;
 }): Promise<string> {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), 25000);
@@ -103,14 +151,12 @@ export async function geminiTranscribe(opts: {
           {
             role: 'user',
             parts: [
-              {
-                text: 'Transcribe this speech exactly as spoken. Reply with ONLY the transcript text — no quotes, no commentary. If there is no intelligible speech, reply with an empty response.',
-              },
+              { text: opts.prompt },
               { inlineData: { mimeType: opts.mime, data: opts.b64 } },
             ],
           },
         ],
-        generationConfig: { maxOutputTokens: 200, temperature: 0 },
+        generationConfig: { maxOutputTokens: 500, temperature: 0 },
       }),
     });
     if (!res.ok) throw new Error(`gemini ${res.status}`);

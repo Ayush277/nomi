@@ -1,5 +1,13 @@
 import { ADAPTER_DOMAINS, validateSignal } from '../lib/adapters';
-import { chatRespond, polishStory } from '../lib/chat';
+import { chatRespond, polishStory, proactiveComment } from '../lib/chat';
+import {
+  EMPTY_PROACTIVE_STATE,
+  markReacted,
+  parseReaction,
+  proactivePrompt,
+  shouldReact,
+  type ProactiveState,
+} from '../lib/proactive';
 import { geminiTranscribe } from '../lib/gemini';
 import { EMPTY_NUDGE_STATE, runNudgeEngine, type NudgeState } from '../lib/nudges/engine';
 import { categorize, observableUrl } from '../lib/privacy';
@@ -15,11 +23,21 @@ import {
   sessionsSince,
 } from '../lib/store';
 import { computeStreak } from '../lib/streak';
+import { getOpenIntentions } from '../lib/intents';
+import { describeLearned, describeLearnedChanges, EMPTY_LEARNED, learnAndSave } from '../lib/learning';
+import { autodocChange, autodocDay, autodocMeta, autodocWeekly, dayDigest } from '../lib/autodoc';
+import { getJournal } from '../lib/journal';
+import { getProfile } from '../lib/profile';
+import { findOpenLoop, morningBrief, pickResurface, resurfaceText, weeklyReview, weekKey } from '../lib/buddy';
+import { getLinks, markResurfaced } from '../lib/bag';
+import { geminiVision } from '../lib/gemini';
+import { hasVisionSignal, parseVisionResult, visionPrompt } from '../lib/vision';
 import { matchSiteReminder } from '../lib/smartreminders';
 import { todayLine, todayRollup } from '../lib/summary';
 import { narrate } from '../lib/narrative';
 import { dateKey, startOfDay } from '../lib/time';
 import { getCurrentVisit, recordMarker, recordSignal, transitionTo } from '../lib/tracker';
+import type { NomiSettings } from '../lib/types';
 
 /** Background worker (ADR-2): a pure event processor. No module-level state
  * that matters — every listener re-derives what it needs from storage, so a
@@ -29,6 +47,7 @@ const RETENTION_ALARM = 'nomi:retention';
 const NUDGE_ALARM = 'nomi:nudgeTick';
 const EVENING_ALARM = 'nomi:evening';
 const NUDGE_STATE_KEY = 'nomi:nudgeState';
+const PROACTIVE_STATE_KEY = 'nomi:proactiveState';
 const STATS_KEY = 'nomi:nudgeStats';
 const IDLE_DETECTION_SECONDS = 90;
 const EVENING_HOUR = 21;
@@ -99,7 +118,9 @@ async function handleVoiceText(text: string): Promise<void> {
   await chrome.storage.session.set({
     'nomi:chatHistory': [...withUser, { role: 'nomi', text: reply, ts: Date.now() }],
   });
-  await showBubble(reply);
+  // They ASKED by voice, so the answer speaks — and then listens once for a
+  // follow-up, so a spoken exchange flows like a conversation. Silence ends it.
+  await showBubble(reply, undefined, { speak: true, followUp: true });
 }
 
 async function syncToActiveTab(): Promise<void> {
@@ -130,9 +151,13 @@ async function checkSiteReminders(rawUrl: string | null): Promise<void> {
   await showBubble(`You're on ${hit.reminder.domain} — you wanted to: ${hit.reminder.what}`);
 }
 
-async function showBubble(text: string, fx?: string): Promise<void> {
+async function showBubble(
+  text: string,
+  fx?: string,
+  voice?: { speak: boolean; followUp?: boolean },
+): Promise<void> {
   await chrome.storage.session.set({
-    'nomi:bubble': { id: crypto.randomUUID(), text, fx },
+    'nomi:bubble': { id: crypto.randomUUID(), text, fx, speak: voice?.speak, followUp: voice?.followUp },
   });
   const { [STATS_KEY]: stats } = await chrome.storage.local.get(STATS_KEY);
   await chrome.storage.local.set({
@@ -158,10 +183,88 @@ async function recordBubbleClosed(id: string, reason: 'dismissed' | 'expired'): 
 /** Rules whose delivery comes with a physical action from the orb. */
 const FX_BY_RULE: Record<string, string> = { hydration: 'water', 'break-time': 'stretch' };
 
+/** Vision Understanding (V2 Upgrade 4): opt-in. Capture the visible tab, turn
+ * it into structured fields via the user's Gemini, store ONLY that structure,
+ * and let the image go (it lives in one local and is never persisted). Gated by
+ * pause / exclusions / sensitive sites / incognito, and by the user's interval.
+ * Best-effort and non-blocking — any failure is silent. */
+async function visionTick(settings: NomiSettings): Promise<void> {
+  if (!settings.vision || !settings.gemini.apiKey.trim()) return;
+  const now = Date.now();
+
+  const { 'nomi:visionTs': last } = await chrome.storage.local.get('nomi:visionTs');
+  const intervalMs = Math.max(60, settings.visionIntervalSec) * 1000;
+  if (now - (last ?? 0) < intervalMs) return;
+
+  const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  if (!tab || tab.incognito || tab.windowId === undefined || !tab.url) return;
+  if (!observableUrl(tab.url, settings.exclusions)) return; // sensitive/excluded/browser page
+
+  // Commit the interval marker before the slow capture so overlapping ticks
+  // don't double-fire.
+  await chrome.storage.local.set({ 'nomi:visionTs': now });
+
+  let dataUrl: string | undefined;
+  try {
+    dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: 'jpeg', quality: 70 });
+  } catch {
+    return; // capture blocked (e.g. a restricted page) — skip quietly
+  }
+  if (!dataUrl) return;
+  const b64 = dataUrl.replace(/^data:[^,]+,/, ''); // the only place the image exists
+
+  try {
+    const raw = await geminiVision({
+      apiKey: settings.gemini.apiKey.trim(),
+      model: settings.gemini.model,
+      b64,
+      mime: 'image/jpeg',
+      prompt: visionPrompt(),
+    });
+    const snap = parseVisionResult(raw, now);
+    if (hasVisionSignal(snap)) await chrome.storage.session.set({ 'nomi:vision': snap });
+  } catch {
+    // best-effort; no snapshot this round
+  }
+  // dataUrl / b64 fall out of scope here — nothing is stored.
+}
+
+/** Proactive mode: glance at the visible page and, on a changed context past
+ * the cooldown, let the brain decide whether to say something unprompted.
+ * Best-effort — any miss is silent. screenContext() already drops paused /
+ * excluded / sensitive pages; incognito is skipped here for the same reason. */
+async function proactiveTick(settings: NomiSettings): Promise<void> {
+  if (!settings.proactive) return;
+  const now = Date.now();
+
+  const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  if (!tab || tab.incognito) return;
+
+  const screen = await screenContext();
+  if (!screen) return;
+
+  const stored = await chrome.storage.local.get(PROACTIVE_STATE_KEY);
+  const state: ProactiveState = { ...EMPTY_PROACTIVE_STATE, ...(stored[PROACTIVE_STATE_KEY] ?? {}) };
+  if (!shouldReact(state, now, screen)) return;
+
+  // Commit the cooldown/context marker up front so a slow model call can't let
+  // the next tick fire a second, overlapping reaction on the same page.
+  await chrome.storage.local.set({ [PROACTIVE_STATE_KEY]: markReacted(now, screen.label) });
+
+  const raw = await proactiveComment(screenPrompt(screen) ?? screen.label, proactivePrompt());
+  const remark = raw ? parseReaction(raw) : null;
+  if (remark) await showBubble(remark);
+}
+
 async function nudgeTick(): Promise<void> {
   const now = Date.now();
   const settings = await getSettings();
   if (settings.paused) return;
+
+  // Vision capture runs on its own interval, silently and independently of
+  // whether Nomi speaks this tick. Fire-and-forget so a slow model call never
+  // delays the nudge logic below.
+  void visionTick(settings);
 
   // A "focus with me" session: hold the mood, say nothing until the bell.
   const { 'nomi:focusSession': focusSession } = await chrome.storage.local.get('nomi:focusSession');
@@ -170,9 +273,35 @@ async function nudgeTick(): Promise<void> {
     return;
   }
 
+  // Morning brief — once a day, first time we see them actually browsing
+  // after 5am: yesterday's shape, today's reminders, the open loop to resume.
+  const briefDay = dateKey(now);
+  const { 'nomi:briefShownOn': briefShown } = await chrome.storage.local.get('nomi:briefShownOn');
+  if (new Date(now).getHours() >= 5 && briefShown !== briefDay && (await getCurrentVisit())) {
+    await chrome.storage.local.set({ 'nomi:briefShownOn': briefDay });
+    const { 'nomi:reminders': rem } = await chrome.storage.local.get('nomi:reminders');
+    const endOfDay = startOfDay(now) + 86400000;
+    const remindersToday = Object.values((rem ?? {}) as Record<string, { what?: string; at?: number }>)
+      .filter((r) => typeof r === 'object' && r.what && (r.at ?? 0) > now && (r.at ?? 0) < endOfDay)
+      .map((r) => ({ what: r.what!, at: r.at! }));
+    const recent = await sessionsSince(now - 4 * 86400000);
+    const todayDomains = new Set(recent.filter((s) => s.startTs >= startOfDay(now)).map((s) => s.domain));
+    const brief = morningBrief({
+      yesterday: await getRollup(dateKey(now - 86400000)),
+      remindersToday,
+      loop: findOpenLoop(recent, todayDomains, now),
+      name: (await getProfile()).name || undefined,
+    });
+    if (brief) {
+      await showBubble(brief);
+      return; // the brief owns this tick — no double bubbles
+    }
+  }
+
   const stored = await chrome.storage.local.get(NUDGE_STATE_KEY);
   const state: NudgeState = { ...EMPTY_NUDGE_STATE, ...(stored[NUDGE_STATE_KEY] ?? {}) };
 
+  let spoke = false;
   const nudge = runNudgeEngine({
     now,
     currentVisit: await getCurrentVisit(),
@@ -180,10 +309,12 @@ async function nudgeTick(): Promise<void> {
     todaySessions: await sessionsSince(startOfDay(now)),
     settings,
     state,
+    openIntentions: await getOpenIntentions(),
   });
   if (nudge) {
     await chrome.storage.local.set({ [NUDGE_STATE_KEY]: nudge.state });
     await showBubble(nudge.text, FX_BY_RULE[nudge.ruleId]);
+    spoke = true;
   }
 
   // Streak note: once a day, mid-morning or later, when it's real.
@@ -194,8 +325,17 @@ async function nudgeTick(): Promise<void> {
     const streak = computeStreak(await allRollups(), await todayRollup(now));
     if (streak >= 2) {
       await showBubble(`Day ${streak} in a row. Quiet consistency — that's how it compounds.`);
+      spoke = true;
     }
   }
+
+  // (The old "you keep returning to <url>" auto-intentions are gone — they
+  // turned Meet links and chat threads into noise. Intentions are now only
+  // what the user actually states.)
+
+  // Proactive remark — only when the deterministic nudges stayed quiet, so we
+  // never stack two bubbles on the user in one tick.
+  if (!spoke) await proactiveTick(settings);
 
   // Ambient mood: focused when deep in a coding/learning stretch.
   const { 'nomi:mood': mood } = await chrome.storage.session.get('nomi:mood');
@@ -241,7 +381,7 @@ export default defineBackground(() => {
   });
 
   // --- messages from widget / adapters -------------------------------------
-  chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     switch (msg?.type) {
       case 'nomi:today':
         void todayLine()
@@ -266,11 +406,14 @@ export default defineBackground(() => {
         // reads as Nomi ignoring the user, which is the one unforgivable bug.
         void screenContext()
           .catch(() => undefined)
-          .then((screen) =>
-            chatRespond(String(msg.text ?? ''), msg.history ?? [], screenPrompt(screen)).then(
+          .then((screen) => {
+            const page =
+              (msg.page as { url?: string; title?: string } | undefined) ??
+              (sender.tab?.url ? { url: sender.tab.url, title: sender.tab.title } : undefined);
+            return chatRespond(String(msg.text ?? ''), msg.history ?? [], screenPrompt(screen), page).then(
               (text) => ({ text, seeing: screen?.label }),
-            ),
-          )
+            );
+          })
           .catch((err) => {
             console.error('[nomi] chat error:', err);
             return {
@@ -313,6 +456,7 @@ export default defineBackground(() => {
               model: settings.gemini.model,
               b64: String(msg.b64 ?? ''),
               mime: String(msg.mime ?? 'audio/webm'),
+              language: settings.language,
             });
             await chrome.storage.session.set({
               'nomi:voiceStatus': { status: 'idle', ts: Date.now() },
@@ -462,16 +606,64 @@ export default defineBackground(() => {
       case NUDGE_ALARM:
         await nudgeTick();
         break;
-      case RETENTION_ALARM:
+      case RETENTION_ALARM: {
         await compactPastDays();
         await pruneOldData();
+        // Refresh the slowly-learned profile once a day — and record what
+        // CHANGED versus the previous snapshot in the living document.
+        const prevLearned = (await getProfile()).learned ?? EMPTY_LEARNED;
+        const learned = await learnAndSave();
+        const shift = describeLearnedChanges(prevLearned, learned);
+        if (shift) await autodocChange(shift);
+        const p = await getProfile();
+        const profileBits: string[] = [];
+        if (p.name) profileBits.push(`Name: ${p.name}.`);
+        if (p.goal) profileBits.push(`Working toward: ${p.goal}.`);
+        if (p.facts.length) profileBits.push('Facts: ' + p.facts.map((f) => f.text).join('; ') + '.');
+        await autodocMeta(profileBits.length ? profileBits.join(' ') : null, describeLearned(learned));
+
+        // Spaced resurfacing: one forgotten bag link per day, at most.
+        const dueLink = pickResurface(await getLinks());
+        if (dueLink) {
+          await markResurfaced(dueLink.id);
+          await showBubble(resurfaceText(dueLink));
+        }
+
+        // Sunday: the weekly review + goal check-in, once per week.
+        const wk = weekKey();
+        const { 'nomi:weeklyReviewOn': lastReview } = await chrome.storage.local.get('nomi:weeklyReviewOn');
+        if (new Date().getDay() === 0 && lastReview !== wk) {
+          const nowTs = Date.now();
+          const rollups = await allRollups();
+          const inRange = (r: { date: string }, from: number, to: number) => {
+            const t = new Date(r.date + 'T12:00:00').getTime();
+            return t >= from && t < to;
+          };
+          const review = weeklyReview({
+            week: rollups.filter((r) => inRange(r, nowTs - 7 * 86400000, nowTs + 86400000)),
+            prevWeek: rollups.filter((r) => inRange(r, nowTs - 14 * 86400000, nowTs - 7 * 86400000)),
+            journal: (await getJournal()).filter((e) => e.ts >= nowTs - 7 * 86400000),
+            goal: p.goal || undefined,
+            learned,
+          });
+          if (review) {
+            await chrome.storage.local.set({ 'nomi:weeklyReviewOn': wk });
+            await autodocWeekly(wk, review);
+            await showBubble(review.length > 220 ? review.slice(0, 217) + '…' : review);
+          }
+        }
         break;
+      }
       case EVENING_ALARM: {
         const settings = await getSettings();
         if (settings.paused) break;
         const rollup = await todayRollup();
         if (rollup.totalMs < 10 * 60000) break; // nothing worth narrating
         await saveRollup(rollup);
+        // The day goes into the living document before the bubble goes out.
+        const dayStart = startOfDay(Date.now());
+        const journalToday = (await getJournal()).filter((e) => e.ts >= dayStart).map((e) => e.text);
+        await autodocDay(rollup.date, dayDigest(rollup, journalToday));
         await showBubble(await polishStory(narrate(rollup)));
         break;
       }

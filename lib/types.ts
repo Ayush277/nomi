@@ -89,6 +89,26 @@ export interface NomiSettings {
   };
   /** Keyless free cloud chat fallback — used only when Gemini/Ollama can't answer. */
   freeChat: boolean;
+  /** Proactive mode: Nomi reads the visible page on its tick and speaks up on
+   * its own when something's worth a remark (needs a brain — Gemini/Ollama).
+   * Still honors pause, exclusions, sensitive sites, and incognito. */
+  proactive: boolean;
+  /** Keep the orb fully present instead of tucking itself small at the edge
+   * after a while. */
+  alwaysVisible: boolean;
+  /** Orb size multiplier (0.75 = small … 1.7 = extra large). */
+  widgetScale: number;
+  /** Orb colour theme. 'aurora' = default coral→violet. */
+  orbTheme: 'aurora' | 'ocean' | 'ember' | 'forest' | 'mono';
+  /** Conversation language. 'hinglish' = natural Hindi-English mix in Roman
+   * script for both what Nomi hears (transcription) and says (replies + voice). */
+  language: 'en' | 'hinglish';
+  /** Vision Understanding (V2 Upgrade 4): periodically capture the visible tab,
+   * extract structured info via a vision model, and DISCARD the image. Needs a
+   * Gemini key. Off by default — the most sensitive capability. */
+  vision: boolean;
+  /** Seconds between vision captures (floored to ~60s by MV3 alarms). */
+  visionIntervalSec: number;
 }
 
 export const DEFAULT_SETTINGS: NomiSettings = {
@@ -109,6 +129,13 @@ export const DEFAULT_SETTINGS: NomiSettings = {
   },
   /** Keyless free cloud fallback (pollinations.ai) so chat never dead-ends. */
   freeChat: true,
+  proactive: true,
+  alwaysVisible: true,
+  widgetScale: 1,
+  orbTheme: 'aurora',
+  language: 'en',
+  vision: false,
+  visionIntervalSec: 60,
 };
 
 /** Widget mood, set by the background, rendered by every tab's orb. */
@@ -150,4 +177,16 @@ export interface ChatMessage {
   role: 'user' | 'nomi';
   text: string;
   ts: number;
+}
+
+/** Slowly-learned traits about the user (V2 Upgrade 6). Every field is
+ * evidence-gated (recurs across days) before it's populated. */
+export interface LearnedProfile {
+  peakHours: number[];
+  frequentSites: string[];
+  favoriteTech: string | null;
+  mostActiveProject: string | null;
+  typicalDistractions: string[];
+  daysObserved: number;
+  computedTs: number;
 }

@@ -40,15 +40,31 @@ export function buildSystemPrompt(opts: {
   todayContext: string;
   screenContext?: string;
   docContext?: string;
+  /** Live context + companion brief (V2 Phase A), pre-rendered by the caller
+   * so persona stays free of dashboard/context imports. */
+  liveContext?: string;
+  /** Query-specific retrieval (V2 Upgrade 8) — memory relevant to what they
+   * just asked, so Nomi answers from what it knows, not thin air. */
+  retrieved?: string;
+  /** 'hinglish' → reply in a natural Hindi-English mix (Roman script). */
+  language?: 'en' | 'hinglish';
 }): string {
-  const { profile, todayContext, screenContext, docContext } = opts;
+  const { profile, todayContext, screenContext, docContext, liveContext, retrieved, language } = opts;
   const persona = PERSONALITIES[profile.personality] ?? PERSONALITIES.friend;
 
   const lines = [
     "You are Nomi, a digital companion who shares the user's workspace.",
     persona.voice,
     'Keep replies short — one to three sentences. You support and notice; you never control, judge, or guilt. Never say you are watching, monitoring, or tracking — you are simply here, alongside.',
+    'Do exactly what the user asks and adapt when they correct you — never repeat the same canned line twice; rephrase and move the conversation forward. When you mention a website or link, use its NAME (e.g. "LeetCode"), never the raw URL or "http/www". If asked about a page or a link, summarize it in your own words — do not read it out word for word.',
+    "Answer the EXACT question in your first sentence — no preamble, no restating their question, no generic filler or advice they didn't ask for. Prefer concrete specifics (names, numbers, dates) from the grounding below over vague generalities. If the grounding doesn't contain the answer, say plainly that you don't have it yet — never invent one.",
   ];
+
+  if (language === 'hinglish') {
+    lines.push(
+      'ALWAYS reply in Hinglish — a natural, casual Hindi-English mix written in Roman/Latin script (like "arre, tension mat le, main yahin hoon"). Never use Devanagari. Keep technical terms in English. Sound like a close Indian friend, not a formal translation.',
+    );
+  }
 
   const about: string[] = [];
   if (profile.name) about.push(`Their name is ${profile.name}.`);
@@ -65,6 +81,8 @@ export function buildSystemPrompt(opts: {
   }
 
   lines.push(`Today so far: ${todayContext}`);
+  if (liveContext) lines.push(liveContext);
+  if (retrieved) lines.push(retrieved);
   if (screenContext) {
     lines.push(
       `Right now they are looking at: ${screenContext}. When they ask about "this" or "the screen", ground your answer in that.`,

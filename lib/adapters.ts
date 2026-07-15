@@ -25,12 +25,22 @@ const CONTRACTS: Record<string, Record<string, Record<string, FieldSpec>>> = {
       channel: { type: 'string', maxLen: 100 },
     },
   },
+  geeksforgeeks: {
+    submission_accepted: {
+      slug: { type: 'string', maxLen: 120 },
+      difficulty: {
+        type: 'string',
+        oneOf: ['School', 'Basic', 'Easy', 'Medium', 'Hard', 'unknown'],
+      },
+    },
+  },
 };
 
 /** Where each adapter's signals belong in the event stream. */
 export const ADAPTER_DOMAINS: Record<string, string> = {
   leetcode: 'leetcode.com',
   youtube: 'youtube.com',
+  geeksforgeeks: 'geeksforgeeks.org',
 };
 
 export function validateSignal(raw: {

@@ -40,13 +40,26 @@ export async function removeDoc(id: string): Promise<void> {
   await chrome.storage.local.set({ [DOCS_KEY]: all.filter((d) => d.id !== id) });
 }
 
+/** Create-or-replace a doc with a FIXED id — used by the auto-written living
+ * document (lib/autodoc.ts) so it updates in place instead of piling up. */
+export async function upsertDoc(id: string, name: string, kind: string, text: string): Promise<NomiDoc> {
+  const clean = text.trim().slice(0, MAX_DOC_CHARS);
+  const doc: NomiDoc = { id, name: name.slice(0, 120), kind, text: clean, chars: clean.length, ts: Date.now() };
+  const all = await getDocs();
+  const at = all.findIndex((d) => d.id === id);
+  if (at >= 0) all[at] = doc;
+  else all.push(doc);
+  await chrome.storage.local.set({ [DOCS_KEY]: all });
+  return doc;
+}
+
 const STOP = new Set(
   'the a an of to in on for and or is are was were what when who how do does did i you my me about tell give show is it this that with from can could'.split(
     ' ',
   ),
 );
 
-function keywords(q: string): string[] {
+export function keywords(q: string): string[] {
   return [
     ...new Set(
       q
@@ -58,26 +71,34 @@ function keywords(q: string): string[] {
   ];
 }
 
-/** Split a doc into ~700-char passages on paragraph/sentence boundaries. */
-function passages(text: string): string[] {
+/** Split a doc into ~700-char passages on paragraph/sentence boundaries,
+ * with a short tail of the previous passage prepended to each one — so an
+ * answer that straddles a boundary is still whole inside SOME passage. */
+export function splitPassages(text: string): string[] {
   const paras = text.split(/\n{2,}/);
-  const out: string[] = [];
+  const raw: string[] = [];
   for (const p of paras) {
     if (p.length <= 900) {
-      if (p.trim()) out.push(p.trim());
+      if (p.trim()) raw.push(p.trim());
     } else {
       const sents = p.match(/[^.!?]+[.!?]*/g) ?? [p];
       let buf = '';
       for (const s of sents) {
         if ((buf + s).length > 700) {
-          if (buf.trim()) out.push(buf.trim());
+          if (buf.trim()) raw.push(buf.trim());
           buf = s;
         } else buf += s;
       }
-      if (buf.trim()) out.push(buf.trim());
+      if (buf.trim()) raw.push(buf.trim());
     }
   }
-  return out;
+  // Overlap: carry the previous passage's last sentence (≤160 chars) forward.
+  return raw.map((p, i) => {
+    if (i === 0) return p;
+    const prev = raw[i - 1];
+    const lastSent = (prev.match(/[^.!?]+[.!?]*\s*$/)?.[0] ?? '').trim().slice(-160);
+    return lastSent && p.length + lastSent.length < 880 ? `${lastSent} ${p}` : p;
+  });
 }
 
 export interface DocHit {
@@ -88,18 +109,23 @@ export interface DocHit {
 
 /** Score every passage across all docs by keyword overlap; return the best
  * few so the chat can ground its answer in the user's own material. */
+export function scorePassage(words: string[], passage: string): number {
+  const hay = passage.toLowerCase();
+  let score = 0;
+  for (const w of words) {
+    const n = hay.split(w).length - 1;
+    if (n > 0) score += 1 + Math.min(n - 1, 2) * 0.3;
+  }
+  return score;
+}
+
 export function searchDocs(query: string, docs: NomiDoc[], limit = 3): DocHit[] {
   const words = keywords(query);
   if (words.length === 0 || docs.length === 0) return [];
   const hits: DocHit[] = [];
   for (const doc of docs) {
-    for (const passage of passages(doc.text)) {
-      const hay = passage.toLowerCase();
-      let score = 0;
-      for (const w of words) {
-        const n = hay.split(w).length - 1;
-        if (n > 0) score += 1 + Math.min(n - 1, 2) * 0.3;
-      }
+    for (const passage of splitPassages(doc.text)) {
+      const score = scorePassage(words, passage);
       if (score > 0) hits.push({ docName: doc.name, passage: passage.slice(0, 900), score });
     }
   }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isRecallLinks, isSaveLink, searchLinks, type SavedLink } from '../bag';
+import { isRecallLinks, isRemoveLink, isSaveLink, searchLinks, type SavedLink } from '../bag';
 
 describe('bag intents', () => {
   it('detects save-link phrasings', () => {
@@ -13,6 +13,23 @@ describe('bag intents', () => {
     expect(isRecallLinks('what links did I save?')).toBe(true);
     expect(isRecallLinks('show me my saved pages')).toBe(true);
     expect(isRecallLinks('give me the link about react')).toBe(true);
+  });
+
+  it('detects remove phrasings (and not saves)', () => {
+    expect(isRemoveLink('delete the link about react')).toBe(true);
+    expect(isRemoveLink('remove that saved page')).toBe(true);
+    expect(isRemoveLink('forget the link about taxes')).toBe(true);
+    expect(isRemoveLink('clear my bag')).toBe(true);
+    expect(isRemoveLink('save this link')).toBe(false);
+    expect(isRemoveLink('how is today going')).toBe(false);
+  });
+
+  it('search ignores remove verbs so "delete the react link" still finds react', () => {
+    const links: SavedLink[] = [
+      { id: '1', url: 'https://react.dev', title: 'React Hooks', domain: 'react.dev', ts: 100 },
+      { id: '2', url: 'https://a.com', title: 'Taxes', domain: 'a.com', ts: 200 },
+    ];
+    expect(searchLinks('delete the react link', links)[0]?.id).toBe('1');
   });
 });
 

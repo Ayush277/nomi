@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { removeLink, saveLink, type SavedLink } from '../../lib/bag';
 import { disconnect, syncGitHub, syncLeetCode } from '../../lib/connect';
 import { loadDashboard, type DashboardData } from '../../lib/dashboard';
 import { addDoc, getDocs, removeDoc, type NomiDoc } from '../../lib/docs';
+import { dayDigest } from '../../lib/autodoc';
 import { narrate } from '../../lib/narrative';
 import { formatClock, formatDuration } from '../../lib/time';
-import type { SiteCategory } from '../../lib/types';
+import type { DayRollup, SiteCategory } from '../../lib/types';
 import { extractText } from './extract';
 
 /** Category hues — fixed order, never cycled (dataviz rule). Labelled
@@ -42,6 +44,13 @@ export function App() {
   const [docBusy, setDocBusy] = useState(false);
   const [docErr, setDocErr] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const [selDay, setSelDay] = useState<string | null>(null);
+  const [calMonth, setCalMonth] = useState(() => {
+    const d = new Date();
+    return { y: d.getFullYear(), m: d.getMonth() };
+  });
+  const [newUrl, setNewUrl] = useState('');
+  const [newTitle, setNewTitle] = useState('');
 
   const reload = () => loadDashboard().then(setData);
   useEffect(() => {
@@ -71,6 +80,29 @@ export function App() {
   const forgetDoc = async (id: string) => {
     await removeDoc(id);
     setDocs(await getDocs());
+  };
+
+  const deleteLink = async (id: string) => {
+    await removeLink(id);
+    await reload();
+  };
+
+  const addLink = async () => {
+    const url = newUrl.trim();
+    if (!url) return;
+    try {
+      const u = new URL(url.startsWith('http') ? url : `https://${url}`);
+      await saveLink({
+        url: u.href,
+        title: (newTitle.trim() || u.hostname).slice(0, 160),
+        domain: u.hostname.replace(/^www\./, ''),
+      });
+      setNewUrl('');
+      setNewTitle('');
+      await reload();
+    } catch {
+      /* not a URL — the input's placeholder explains the shape */
+    }
   };
 
   const q = query.trim().toLowerCase();
@@ -246,6 +278,104 @@ export function App() {
             )}
           </Card>
 
+          <Card title="While you studied" sub="what the screen actually showed">
+            {!data.drift ? (
+              <p className="empty">Needs a real study block (15+ min of coding/learning) to judge.</p>
+            ) : data.drift.watchMs === 0 ? (
+              <p className="empty">
+                Clean block — {compact(data.drift.studyMs)} of focus with no YouTube/social in between.
+              </p>
+            ) : (
+              <>
+                <div className="drift-bar" role="img" aria-label="Watch time during study: related vs drift">
+                  {data.drift.relatedMs > 0 && (
+                    <div
+                      className="drift-seg related"
+                      style={{ flexGrow: data.drift.relatedMs }}
+                      title={`study content: ${formatDuration(data.drift.relatedMs)}`}
+                    />
+                  )}
+                  {data.drift.driftMs > 0 && (
+                    <div
+                      className="drift-seg drift"
+                      style={{ flexGrow: data.drift.driftMs }}
+                      title={`drift: ${formatDuration(data.drift.driftMs)}`}
+                    />
+                  )}
+                </div>
+                <p className="drift-line">
+                  During {compact(data.drift.studyMs)} of study, watch-tabs were open{' '}
+                  {compact(data.drift.watchMs)} — {compact(data.drift.relatedMs)} looked like study
+                  content, {compact(data.drift.driftMs)} was drift.
+                </p>
+                {data.drift.related.length > 0 && (
+                  <ul className="drift-list">
+                    {data.drift.related.map((t) => (
+                      <li key={t}>
+                        <span className="dr-tag ok-tag">study</span> {t}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {data.drift.drift.length > 0 && (
+                  <ul className="drift-list">
+                    {data.drift.drift.map((t) => (
+                      <li key={t}>
+                        <span className="dr-tag drift-tag">drift</span> {t}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </>
+            )}
+          </Card>
+
+          <Card title="Calendar" sub="every day Nomi remembers — click one">
+            <CalendarGrid
+              y={calMonth.y}
+              m={calMonth.m}
+              history={data.history}
+              sel={selDay}
+              onSel={(d) => setSelDay(d === selDay ? null : d)}
+              onNav={(dir) =>
+                setCalMonth(({ y, m }) => {
+                  const nm = m + dir;
+                  return nm < 0 ? { y: y - 1, m: 11 } : nm > 11 ? { y: y + 1, m: 0 } : { y, m: nm };
+                })
+              }
+            />
+            {selDay && data.history[selDay] && (
+              <div className="day-detail">
+                <h4>{new Date(`${selDay}T12:00:00`).toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' })}</h4>
+                <p>{dayDigest(data.history[selDay])}</p>
+                {data.solved.filter((s) => sameDay(s.ts, selDay)).length > 0 && (
+                  <p className="day-extra">
+                    ✓ Solved:{' '}
+                    {data.solved
+                      .filter((s) => sameDay(s.ts, selDay))
+                      .map((s) => s.slug.replace(/-/g, ' '))
+                      .join(', ')}
+                  </p>
+                )}
+                {data.videos.filter((v) => sameDay(v.ts, selDay)).length > 0 && (
+                  <p className="day-extra">
+                    ▶ Watched:{' '}
+                    {data.videos
+                      .filter((v) => sameDay(v.ts, selDay))
+                      .slice(0, 3)
+                      .map((v) => v.title)
+                      .join(' · ')}
+                  </p>
+                )}
+              </div>
+            )}
+            {selDay && !data.history[selDay] && (
+              <div className="day-detail">
+                <p className="empty">Nothing remembered for that day.</p>
+              </div>
+            )}
+          </Card>
+
           <Card title="Connected accounts" sub="public data, synced on-device">
             <Connect
               name="LeetCode"
@@ -347,29 +477,64 @@ export function App() {
                 </ul>
               </div>
             )}
-            {filtered.links.length > 0 && (
-              <div className="mem-block">
-                <h4>Saved links ({filtered.links.length})</h4>
-                <ul className="mem-list">
-                  {filtered.links.slice(0, 12).map((l) => (
-                    <li key={l.id}>
-                      <a href={l.url} target="_blank" rel="noreferrer">
-                        🔖 {l.title}
-                      </a>
-                      <span className="ago">{l.domain}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
             {data.profile.facts.length === 0 &&
               filtered.solved.length === 0 &&
-              filtered.videos.length === 0 &&
-              filtered.links.length === 0 && (
+              filtered.videos.length === 0 && (
                 <p className="empty">
-                  {q ? 'No matches.' : 'Your memory fills as you work — solved problems, videos, saved links, and anything you ask Nomi to remember.'}
+                  {q ? 'No matches.' : 'Your memory fills as you work — solved problems, videos, and anything you ask Nomi to remember.'}
                 </p>
               )}
+          </Card>
+
+          <Card title={`Your bag (${filtered.links.length})`} sub="saved links, folded by day">
+            <div className="bag-add">
+              <input
+                placeholder="paste a URL to save…"
+                value={newUrl}
+                onChange={(e) => setNewUrl(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && void addLink()}
+              />
+              <input
+                className="bag-title"
+                placeholder="title (optional)"
+                value={newTitle}
+                onChange={(e) => setNewTitle(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && void addLink()}
+              />
+              <button onClick={() => void addLink()}>+ Add</button>
+            </div>
+            {filtered.links.length === 0 ? (
+              <p className="empty">
+                {q ? 'No matches.' : 'Say "save this page" to Nomi on any page, or paste a URL above.'}
+              </p>
+            ) : (
+              groupLinks(filtered.links).map(([label, links], gi) => (
+                <details className="bag-group" key={label} open={gi === 0}>
+                  <summary>
+                    <span>{label}</span>
+                    <span className="bag-count">{links.length}</span>
+                  </summary>
+                  <ul className="mem-list bag-list">
+                    {links.map((l) => (
+                      <li key={l.id}>
+                        <a href={l.url} target="_blank" rel="noreferrer">
+                          🔖 {l.title}
+                        </a>
+                        <span className="ago">{l.domain}</span>
+                        <button
+                          className="bag-del"
+                          aria-label={`Delete ${l.title}`}
+                          title="Delete"
+                          onClick={() => void deleteLink(l.id)}
+                        >
+                          ✕
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              ))
+            )}
           </Card>
         </div>
       </div>
@@ -377,6 +542,93 @@ export function App() {
       <footer className="dash-foot">
         Everything here lives only on this device · Nomi v{chrome.runtime.getManifest?.().version ?? ''}
       </footer>
+    </div>
+  );
+}
+
+function sameDay(ts: number, date: string): boolean {
+  const d = new Date(ts);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}` === date;
+}
+
+/** Fold links into day buckets, newest bucket first. */
+function groupLinks(links: SavedLink[]): [string, SavedLink[]][] {
+  const today = new Date().toDateString();
+  const yesterday = new Date(Date.now() - 86400000).toDateString();
+  const buckets = new Map<string, SavedLink[]>();
+  for (const l of [...links].sort((a, b) => b.ts - a.ts)) {
+    const ds = new Date(l.ts).toDateString();
+    const label =
+      ds === today
+        ? 'Today'
+        : ds === yesterday
+          ? 'Yesterday'
+          : new Date(l.ts).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' });
+    if (!buckets.has(label)) buckets.set(label, []);
+    buckets.get(label)!.push(l);
+  }
+  return [...buckets.entries()];
+}
+
+function CalendarGrid(props: {
+  y: number;
+  m: number;
+  history: Record<string, DayRollup>;
+  sel: string | null;
+  onSel: (date: string) => void;
+  onNav: (dir: -1 | 1) => void;
+}) {
+  const { y, m, history, sel, onSel, onNav } = props;
+  const first = new Date(y, m, 1);
+  const daysInMonth = new Date(y, m + 1, 0).getDate();
+  const lead = (first.getDay() + 6) % 7; // Monday-first
+  const todayKey = (() => {
+    const d = new Date();
+    const p = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  })();
+  const cells: (string | null)[] = [
+    ...Array.from({ length: lead }, () => null),
+    ...Array.from({ length: daysInMonth }, (_, i) => {
+      const p = (n: number) => String(n).padStart(2, '0');
+      return `${y}-${p(m + 1)}-${p(i + 1)}`;
+    }),
+  ];
+  const heat = (ms: number) => (ms >= 2 * 3600000 ? 3 : ms >= 30 * 60000 ? 2 : ms > 0 ? 1 : 0);
+  return (
+    <div className="cal">
+      <div className="cal-head">
+        <button onClick={() => onNav(-1)} aria-label="Previous month">‹</button>
+        <strong>{first.toLocaleDateString([], { month: 'long', year: 'numeric' })}</strong>
+        <button onClick={() => onNav(1)} aria-label="Next month">›</button>
+      </div>
+      <div className="cal-grid">
+        {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d, i) => (
+          <span className="cal-wd" key={i}>{d}</span>
+        ))}
+        {cells.map((date, i) =>
+          date === null ? (
+            <span key={`b${i}`} />
+          ) : (
+            <button
+              key={date}
+              className={[
+                'cal-day',
+                `heat-${heat(history[date]?.totalMs ?? 0)}`,
+                date === sel ? 'sel' : '',
+                date === todayKey ? 'today' : '',
+                date > todayKey ? 'future' : '',
+              ].join(' ')}
+              disabled={date > todayKey}
+              onClick={() => onSel(date)}
+              title={history[date] ? formatDuration(history[date].totalMs) : 'no data'}
+            >
+              {Number(date.slice(-2))}
+            </button>
+          ),
+        )}
+      </div>
     </div>
   );
 }

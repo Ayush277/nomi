@@ -3,758 +3,568 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Nomi — your quiet companion</title>
-<meta name="description" content="Not another AI assistant. Nomi lives beside your browser, notices your day, and remembers it — entirely on your device." />
+<title>Nomi · Your second memory.</title>
+<meta name="description" content="Nomi is a quiet companion that lives beside your browser. It notices, understands, and remembers your day, so you don't have to. On-device. In Beta." />
 <style>
   :root {
-    --studio: #ececef;
-    --paper: #fbfbfc;
-    --ink: #17171e;
-    --ink-soft: rgba(23, 23, 30, 0.6);
-    --ink-faint: rgba(23, 23, 30, 0.38);
-    --line: rgba(23, 23, 30, 0.08);
-    --lav: #c4b5fd;
-    --teal: #5eead4;
-    --teal-deep: #14b8a6;
-    --dark: #101018;
-    --glass: rgba(255, 255, 255, 0.44);
-    --glass-edge: rgba(255, 255, 255, 0.8);
+    --bg: #090909;
+    --ink: #f5f6f8;
+    --ink-2: rgba(245, 246, 248, 0.56);
+    --ink-3: rgba(245, 246, 248, 0.34);
+    --purple: #8b5cf6;
+    --purple-2: #a78bfa;
+    --deep: #6d28d9;
+    --glass: rgba(255, 255, 255, 0.04);
+    --glass-2: rgba(255, 255, 255, 0.06);
+    --line: rgba(255, 255, 255, 0.08);
+    --line-2: rgba(255, 255, 255, 0.14);
+    --r: 28px;
+    --sans: -apple-system, 'SF Pro Display', BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif;
+    --mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, monospace;
     --ease: cubic-bezier(0.22, 1, 0.36, 1);
-    --shadow-float: 0 30px 80px rgba(23, 23, 30, 0.16), 0 4px 18px rgba(23, 23, 30, 0.06);
-    --shadow-card: 0 12px 44px rgba(23, 23, 30, 0.08), 0 1px 3px rgba(23, 23, 30, 0.04);
-    --sans: -apple-system, 'SF Pro Display', BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    --mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, monospace;
   }
 
   * { margin: 0; padding: 0; box-sizing: border-box; }
-
-  html { scroll-behavior: smooth; }
+  html { scroll-behavior: smooth; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
 
   body {
-    background:
-      radial-gradient(120% 80% at 50% -10%, #f5f5f7, transparent 60%),
-      radial-gradient(90% 70% at 88% 108%, #e5e2ef, transparent 55%),
-      var(--studio);
+    background: var(--bg);
     color: var(--ink);
     font-family: var(--sans);
-    font-size: 16px;
+    font-size: 17px;
     line-height: 1.6;
     overflow-x: hidden;
-    -webkit-font-smoothing: antialiased;
+    letter-spacing: -0.011em;
   }
 
-  ::selection { background: rgba(94, 234, 212, 0.4); }
-  a { color: inherit; }
-  button, input { font: inherit; }
-  :focus-visible { outline: 2px solid var(--teal-deep); outline-offset: 3px; border-radius: 6px; }
+  /* ambient purple glows — soft, blurred, barely there */
+  .glow { position: fixed; z-index: 0; pointer-events: none; border-radius: 50%; filter: blur(120px); opacity: 0.5; }
+  .glow.a { width: 60vw; height: 60vw; top: -22vw; left: -12vw; background: radial-gradient(circle, rgba(139, 92, 246, 0.28), transparent 70%); }
+  .glow.b { width: 46vw; height: 46vw; top: 44%; right: -14vw; background: radial-gradient(circle, rgba(109, 40, 217, 0.24), transparent 70%); }
+  .glow.c { width: 50vw; height: 50vw; bottom: -18vw; left: 22vw; background: radial-gradient(circle, rgba(139, 92, 246, 0.14), transparent 70%); }
 
-  .shell { max-width: 1180px; margin: 0 auto; padding: 0 28px; }
+  /* cursor-follow glow */
+  #cursor { position: fixed; z-index: 1; pointer-events: none; width: 420px; height: 420px; border-radius: 50%; background: radial-gradient(circle, rgba(139, 92, 246, 0.1), transparent 65%); transform: translate(-50%, -50%); transition: opacity 0.4s ease; opacity: 0; }
+
+  .wrap { position: relative; z-index: 2; max-width: 1160px; margin: 0 auto; padding: 0 32px; }
 
   /* ---------- nav ---------- */
-
-  nav { position: sticky; top: 14px; z-index: 20; padding: 0 28px; }
-
-  .nav-pill {
-    max-width: 1180px;
-    margin: 0 auto;
-    display: flex;
-    align-items: center;
-    gap: 26px;
-    padding: 10px 12px 10px 22px;
-    border-radius: 999px;
-    background: rgba(251, 251, 252, 0.66);
-    backdrop-filter: blur(20px) saturate(1.4);
-    -webkit-backdrop-filter: blur(20px) saturate(1.4);
-    border: 1px solid var(--glass-edge);
-    box-shadow: var(--shadow-card);
+  nav { position: fixed; top: 0; left: 0; right: 0; z-index: 50; display: flex; justify-content: center; padding: 18px; }
+  .nav-inner {
+    display: flex; align-items: center; gap: 30px; width: 100%; max-width: 1000px;
+    padding: 11px 12px 11px 22px; border-radius: 999px;
+    background: rgba(14, 14, 16, 0.55); border: 1px solid var(--line);
+    backdrop-filter: blur(22px) saturate(1.4); -webkit-backdrop-filter: blur(22px) saturate(1.4);
+    transition: transform 0.5s var(--ease), opacity 0.5s var(--ease);
   }
-
-  .wordmark { display: flex; align-items: center; gap: 9px; font-weight: 700; font-size: 16px; text-decoration: none; letter-spacing: -0.01em; }
-
-  .nav-links { display: flex; gap: 22px; margin-left: auto; font-size: 13.5px; color: var(--ink-soft); }
-  .nav-links a { text-decoration: none; transition: color 200ms var(--ease); }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 17px; letter-spacing: -0.02em; margin-right: auto; }
+  .brand .dot { width: 22px; height: 22px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #c4b5fd, var(--purple) 55%, var(--deep)); box-shadow: 0 0 14px rgba(139, 92, 246, 0.6); }
+  .nav-links { display: flex; gap: 26px; }
+  .nav-links a { color: var(--ink-2); text-decoration: none; font-size: 14.5px; transition: color 0.2s ease; }
   .nav-links a:hover { color: var(--ink); }
+  .nav-pill { font-family: var(--mono); font-size: 11px; letter-spacing: 0.12em; color: var(--purple-2); padding: 7px 13px; border-radius: 999px; border: 1px solid var(--line-2); background: rgba(139, 92, 246, 0.08); }
 
-  .btn {
-    display: inline-block;
-    padding: 11px 22px;
-    border-radius: 999px;
-    border: 1px solid var(--line);
-    background: rgba(255, 255, 255, 0.7);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
-    color: var(--ink);
-    text-decoration: none;
-    font-size: 14px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: transform 250ms var(--ease), box-shadow 250ms var(--ease);
-  }
+  /* ---------- buttons ---------- */
+  .btn { display: inline-flex; align-items: center; gap: 8px; font: inherit; font-size: 15px; font-weight: 500; padding: 13px 24px; border-radius: 999px; text-decoration: none; cursor: pointer; border: 1px solid transparent; transition: transform 0.3s var(--ease), background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease; }
+  .btn.primary { background: var(--purple); color: #fff; box-shadow: 0 10px 40px -8px rgba(139, 92, 246, 0.6); }
+  .btn.primary:hover { transform: translateY(-2px); background: var(--purple-2); box-shadow: 0 16px 50px -8px rgba(139, 92, 246, 0.7); }
+  .btn.ghost { background: var(--glass); color: var(--ink); border-color: var(--line-2); }
+  .btn.ghost:hover { transform: translateY(-2px); background: var(--glass-2); border-color: rgba(255, 255, 255, 0.24); }
 
-  .btn:hover { transform: translateY(-1px); box-shadow: var(--shadow-card); }
+  /* ---------- type ---------- */
+  .eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: 0.24em; text-transform: uppercase; color: var(--purple-2); }
+  h1 { font-size: clamp(3rem, 9vw, 6.6rem); font-weight: 600; line-height: 0.98; letter-spacing: -0.045em; text-wrap: balance; }
+  h2 { font-size: clamp(2.2rem, 6vw, 4.4rem); font-weight: 600; line-height: 1.02; letter-spacing: -0.04em; text-wrap: balance; }
+  h3 { font-size: 21px; font-weight: 600; letter-spacing: -0.02em; }
+  .lede { font-size: clamp(1.05rem, 1.6vw, 1.35rem); color: var(--ink-2); line-height: 1.55; max-width: 34ch; font-weight: 400; }
+  .muted { color: var(--ink-2); }
+  .accent { color: var(--purple-2); }
 
-  .btn.ink { background: var(--ink); color: #fff; border-color: var(--ink); box-shadow: 0 8px 26px rgba(23, 23, 30, 0.28); }
-  .btn.ink:hover { box-shadow: 0 12px 34px rgba(23, 23, 30, 0.34); }
-
-  .tag {
-    display: inline-block;
-    font-family: var(--mono);
-    font-size: 10.5px;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    padding: 5px 12px;
-    border-radius: 999px;
-    background: var(--teal);
-    color: var(--ink);
-    font-weight: 600;
-  }
-
-  .label {
-    font-family: var(--mono);
-    font-size: 11px;
-    letter-spacing: 0.18em;
-    text-transform: uppercase;
-    color: var(--ink-faint);
-  }
+  /* ---------- sections ---------- */
+  section { position: relative; z-index: 2; padding: clamp(96px, 15vh, 180px) 0; }
+  .reveal { opacity: 0; transform: translateY(34px); transition: opacity 1s var(--ease), transform 1s var(--ease); }
+  .reveal.in { opacity: 1; transform: none; }
+  .d1 { transition-delay: 0.08s; } .d2 { transition-delay: 0.16s; } .d3 { transition-delay: 0.24s; } .d4 { transition-delay: 0.32s; }
 
   /* ---------- hero ---------- */
+  .hero { min-height: 100vh; display: grid; grid-template-columns: 1.05fr 0.95fr; align-items: center; gap: 40px; padding-top: 130px; padding-bottom: 80px; }
+  .hero h1 { margin: 22px 0 26px; }
+  .hero-cta { display: flex; align-items: center; gap: 14px; margin-top: 38px; flex-wrap: wrap; }
+  .hero-note { font-family: var(--mono); font-size: 11px; letter-spacing: 0.16em; color: var(--ink-3); }
 
-  .hero {
-    display: grid;
-    grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr);
-    gap: 56px;
-    align-items: center;
-    padding: 96px 0 40px;
-  }
-
-  h1 {
-    font-size: clamp(40px, 5.4vw, 66px);
-    line-height: 1.02;
-    font-weight: 700;
-    letter-spacing: -0.035em;
-    text-wrap: balance;
-    margin-top: 22px;
-  }
-
-  h1 em {
-    font-style: normal;
-    background: linear-gradient(110deg, #8b7ae8, var(--teal-deep));
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
-  }
-
-  .lede { margin-top: 24px; max-width: 42ch; font-size: 17px; color: var(--ink-soft); }
-
-  .hero-cta { display: flex; gap: 12px; margin-top: 36px; flex-wrap: wrap; align-items: center; }
-  .hero-note { font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em; color: var(--ink-faint); }
-
-  /* floating browser mock */
-
-  .stage { perspective: 1400px; }
-
-  .browser {
-    border-radius: 22px;
-    background: var(--paper);
-    border: 1px solid var(--glass-edge);
-    box-shadow: var(--shadow-float);
-    overflow: hidden;
-    transform: rotateX(4deg) rotateY(-7deg) rotateZ(0.4deg);
-    transition: transform 600ms var(--ease);
-    animation: float 7s ease-in-out infinite;
-    will-change: transform;
-  }
-
-  @keyframes float { 0%, 100% { translate: 0 0; } 50% { translate: 0 -10px; } }
-
-  .browser-bar { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--line); background: #f4f4f6; }
-  .dot { width: 10px; height: 10px; border-radius: 50%; background: #d9d9de; }
-  .addr { margin-left: 10px; flex: 1; font-family: var(--mono); font-size: 11.5px; color: var(--ink-faint); background: #ececef; border-radius: 8px; padding: 6px 12px; }
-
-  .pageview {
-    position: relative;
-    padding: 26px 26px 30px;
-    min-height: 320px;
-    background: radial-gradient(70% 50% at 15% 0%, rgba(196, 181, 253, 0.14), transparent 60%), var(--paper);
-  }
-
-  .skel { height: 11px; border-radius: 6px; background: #e8e8ec; margin-bottom: 12px; }
-  .skel.w1 { width: 62%; height: 20px; margin-bottom: 20px; background: #dfdfe5; }
-  .skel.w2 { width: 92%; }
-  .skel.w3 { width: 84%; }
-  .skel.w4 { width: 46%; margin-bottom: 22px; }
-
-  .code-skel { border-radius: 14px; background: #14141d; padding: 16px; width: 72%; display: flex; flex-direction: column; gap: 9px; }
-  .code-line { height: 8px; border-radius: 4px; background: rgba(255, 255, 255, 0.14); }
-  .code-line.a { width: 55%; background: rgba(196, 181, 253, 0.45); }
-  .code-line.b { width: 78%; }
-  .code-line.c { width: 40%; background: rgba(94, 234, 212, 0.4); }
-  .code-line.d { width: 66%; }
-
-  .orb {
-    position: absolute;
-    right: 22px;
-    bottom: 20px;
-    width: 84px;
-    height: 84px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: linear-gradient(135deg, rgba(196, 181, 253, 0.55), rgba(94, 234, 212, 0.45)), rgba(255, 255, 255, 0.5);
-    border: 1px solid rgba(255, 255, 255, 0.85);
-    box-shadow: 0 14px 34px rgba(23, 23, 30, 0.22), inset 0 -8px 18px rgba(23, 23, 30, 0.08);
-    animation: breathe 4s ease-in-out infinite;
-  }
-
-  @keyframes breathe { 0%, 100% { scale: 1; } 50% { scale: 1.03; } }
-
-  .eyes { display: flex; gap: 12px; transition: transform 220ms var(--ease); }
-  .eye { width: 6.5px; height: 17px; border-radius: 999px; background: rgba(22, 22, 34, 0.85); transition: transform 120ms ease-in-out; }
-  .orb.blink .eye { transform: scaleY(0.1); }
-
-  .mock-bubble {
-    position: absolute;
-    right: 24px;
-    bottom: 116px;
-    max-width: 240px;
-    padding: 11px 15px;
-    border-radius: 16px;
-    border-bottom-right-radius: 5px;
-    background: rgba(23, 23, 30, 0.86);
-    color: rgba(255, 255, 255, 0.94);
-    font-size: 12.8px;
-    line-height: 1.45;
-    box-shadow: 0 14px 34px rgba(23, 23, 30, 0.25);
-    opacity: 0;
-    transform: translateY(6px);
-    transition: opacity 450ms var(--ease), transform 450ms var(--ease);
-  }
-
-  .mock-bubble.on { opacity: 1; transform: none; }
-
-  /* ---------- bento ---------- */
-
-  section { padding: 110px 0 0; }
-
-  .section-head { max-width: 60ch; }
-  .section-head h2 { font-size: clamp(30px, 3.6vw, 44px); font-weight: 700; letter-spacing: -0.03em; line-height: 1.06; text-wrap: balance; margin-top: 14px; }
-  .section-head p { margin-top: 14px; color: var(--ink-soft); }
-
-  .bento-wrap { position: relative; margin-top: 44px; }
-
-  /* color underneath so the frosting has something to frost */
-  .bento-wrap::before,
-  .bento-wrap::after {
-    content: '';
-    position: absolute;
-    z-index: 0;
-    border-radius: 50%;
-    filter: blur(70px);
-    pointer-events: none;
-  }
-
-  .bento-wrap::before { width: 46%; height: 55%; left: -6%; top: -8%; background: rgba(196, 181, 253, 0.5); }
-  .bento-wrap::after { width: 42%; height: 50%; right: -5%; bottom: -6%; background: rgba(94, 234, 212, 0.45); }
-
-  .bento {
-    position: relative;
-    z-index: 1;
-    display: grid;
-    grid-template-columns: repeat(12, 1fr);
-    gap: 16px;
-  }
-
-  .tile {
-    border-radius: 28px;
-    background: var(--glass);
-    border: 1px solid var(--glass-edge);
-    backdrop-filter: blur(26px) saturate(1.35);
-    -webkit-backdrop-filter: blur(26px) saturate(1.35);
-    box-shadow: var(--shadow-card);
+  /* floating preview cards */
+  .previews { position: relative; height: 460px; }
+  .card {
+    position: absolute; border-radius: var(--r);
+    background: linear-gradient(160deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02));
+    border: 1px solid var(--line); backdrop-filter: blur(30px) saturate(1.3); -webkit-backdrop-filter: blur(30px) saturate(1.3);
+    box-shadow: 0 40px 90px -30px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.07);
     padding: 26px;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    transition: transform 350ms var(--ease), box-shadow 350ms var(--ease);
   }
+  .card .k { font-family: var(--mono); font-size: 11px; letter-spacing: 0.18em; color: var(--purple-2); text-transform: uppercase; }
+  .card .big { font-size: 26px; font-weight: 600; letter-spacing: -0.03em; margin: 14px 0 6px; }
+  .card .sub { color: var(--ink-2); font-size: 15px; }
+  .card.one { top: 24px; left: 0; width: 340px; animation: float1 8s ease-in-out infinite; }
+  .card.two { bottom: 20px; right: 6px; width: 320px; animation: float2 9s ease-in-out infinite; }
+  .card.chip { top: 210px; left: 168px; width: auto; padding: 14px 18px; display: flex; align-items: center; gap: 12px; animation: float1 7s ease-in-out infinite 0.5s; }
+  .card.chip .o { width: 30px; height: 30px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #c4b5fd, var(--purple) 55%, var(--deep)); box-shadow: 0 0 16px rgba(139, 92, 246, 0.7); }
+  @keyframes float1 { 0%, 100% { transform: translateY(0) rotate(-1deg); } 50% { transform: translateY(-16px) rotate(-1deg); } }
+  @keyframes float2 { 0%, 100% { transform: translateY(0) rotate(1.5deg); } 50% { transform: translateY(-20px) rotate(1.5deg); } }
 
-  .tile:hover { transform: translateY(-4px); box-shadow: var(--shadow-float); }
+  /* ---------- statement ---------- */
+  .statement { text-align: center; }
+  .statement .line { font-size: clamp(3rem, 11vw, 8rem); font-weight: 600; line-height: 0.96; letter-spacing: -0.05em; }
+  .statement .forget { color: var(--ink-3); }
+  .statement .doesnt { color: var(--ink); }
+  .statement .doesnt b { color: var(--purple-2); font-weight: 600; }
 
-  .s3 { grid-column: span 3; }
-  .s4 { grid-column: span 4; }
-  .s5 { grid-column: span 5; }
-  .s6 { grid-column: span 6; }
-  .s7 { grid-column: span 7; }
-
-  .tile h3 { font-size: 17px; font-weight: 700; letter-spacing: -0.015em; }
-  .tile p { font-size: 14px; color: var(--ink-soft); }
-
-  .tile .quote {
-    margin-top: auto;
-    padding: 12px 15px;
-    border-radius: 15px;
-    border-bottom-left-radius: 5px;
-    background: rgba(23, 23, 30, 0.86);
-    color: rgba(255, 255, 255, 0.93);
-    font-size: 13px;
-    line-height: 1.5;
-    box-shadow: 0 10px 26px rgba(23, 23, 30, 0.16);
+  /* ---------- feature grids ---------- */
+  .head { display: flex; flex-direction: column; gap: 20px; margin-bottom: 64px; max-width: 640px; }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; }
+  .grid.two { grid-template-columns: repeat(2, 1fr); }
+  .panel {
+    border-radius: var(--r); padding: 34px 32px;
+    background: var(--glass); border: 1px solid var(--line);
+    backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+    transition: transform 0.5s var(--ease), border-color 0.5s ease, background 0.5s ease;
   }
+  .panel:hover { transform: translateY(-6px); border-color: var(--line-2); background: var(--glass-2); }
+  .panel .k { font-family: var(--mono); font-size: 11.5px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--purple-2); }
+  .panel h3 { margin: 16px 0 12px; }
+  .panel p { color: var(--ink-2); font-size: 15.5px; line-height: 1.6; }
+  .panel.wide { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1.4fr; gap: 30px; align-items: center; }
+  @media (min-width: 861px) { .panel.tall { grid-row: span 2; } }
 
-  .tile canvas { display: block; margin: 6px 0; }
+  /* privacy statement */
+  .privacy { text-align: center; }
+  .privacy h2 { margin: 0 auto 24px; max-width: 16ch; }
+  .privacy .row { display: flex; justify-content: center; gap: 12px; flex-wrap: wrap; margin-top: 40px; }
+  .tagpill { font-family: var(--mono); font-size: 12px; letter-spacing: 0.08em; color: var(--ink-2); padding: 9px 16px; border-radius: 999px; border: 1px solid var(--line); background: var(--glass); }
 
-  .tile .top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  /* steps — a real sequence, so numbers earn their place */
+  .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; }
+  .step { border-radius: var(--r); padding: 32px; background: var(--glass); border: 1px solid var(--line); backdrop-filter: blur(20px); }
+  .step .n { font-family: var(--mono); font-size: 13px; color: var(--purple-2); letter-spacing: 0.1em; }
+  .step h3 { margin: 18px 0 10px; }
+  .step p { color: var(--ink-2); font-size: 15px; }
+  .step code { font-family: var(--mono); font-size: 0.85em; background: rgba(139, 92, 246, 0.12); color: var(--purple-2); padding: 2px 7px; border-radius: 6px; }
 
-  /* the one dark tile — anchor of the grid */
+  /* closing */
+  .closing { text-align: center; }
+  .closing h2 { margin: 0 auto 22px; max-width: 18ch; }
+  .closing .cta { display: flex; justify-content: center; gap: 14px; margin-top: 40px; flex-wrap: wrap; }
 
-  .tile.dark {
+  footer { position: relative; z-index: 2; border-top: 1px solid var(--line); padding: 40px 0; }
+  .foot { display: flex; justify-content: space-between; align-items: center; color: var(--ink-3); font-size: 14px; flex-wrap: wrap; gap: 14px; }
+  .foot .brand { font-size: 15px; margin: 0; }
+  .foot .maker a { color: var(--ink-2); text-decoration: none; border-bottom: 1px solid rgba(255, 255, 255, 0.18); transition: color 0.25s ease, border-color 0.25s ease; }
+  .foot .maker a:hover { color: var(--purple-2); border-color: var(--purple-2); }
+
+  /* ---------- Nomi orb (the mascot) — the ACTUAL Nomi: serene blue glass
+     ball, two small round white eyes with a twinkle, blue aura, orbiting
+     sparkles. Mirrors the extension's widget.css. ---------- */
+  .nomi-mini { position: relative; width: 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; gap: 4px; background: radial-gradient(circle at 36% 27%, #f0ecff, #a78bfa 42%, #8b5cf6 72%, #6d28d9); box-shadow: 0 0 14px rgba(139, 92, 246, 0.65), inset 1px 2px 4px rgba(255, 255, 255, 0.55); }
+  .nomi-mini i { width: 3px; height: 3px; border-radius: 50%; background: #fff; box-shadow: 0 0 3px rgba(255, 255, 255, 0.9); }
+
+  .nomi-stage { position: relative; height: 440px; display: flex; align-items: center; justify-content: center; }
+  .orb-xl {
+    position: relative; width: 210px; height: 210px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center; gap: 28px;
     background:
-      radial-gradient(80% 70% at 15% 0%, rgba(196, 181, 253, 0.18), transparent 60%),
-      radial-gradient(70% 60% at 90% 100%, rgba(94, 234, 212, 0.14), transparent 60%),
-      var(--dark);
-    border-color: rgba(255, 255, 255, 0.12);
-    color: rgba(255, 255, 255, 0.92);
-    box-shadow: 0 30px 70px rgba(23, 23, 30, 0.3);
+      radial-gradient(circle at 36% 27%, rgba(240, 236, 255, 0.75), transparent 20%),
+      radial-gradient(circle at 46% 44%, rgba(167, 139, 250, 0.62), rgba(139, 92, 246, 0.58) 46%, rgba(109, 40, 217, 0.5) 100%);
+    border: 1px solid rgba(196, 181, 253, 0.5);
+    box-shadow:
+      0 0 60px rgba(139, 92, 246, 0.55), 0 0 130px rgba(109, 40, 217, 0.35),
+      0 20px 50px rgba(30, 12, 70, 0.45),
+      inset 0 -24px 46px rgba(76, 29, 149, 0.42), inset 14px 18px 34px rgba(255, 255, 255, 0.5);
+    animation: orb-breathe 4.4s ease-in-out infinite, orb-roam 14s ease-in-out infinite;
   }
+  /* glowing inner core, like the widget's living aura */
+  .orb-xl::before { content: ''; position: absolute; inset: 16%; border-radius: 50%; background: radial-gradient(circle at 50% 46%, rgba(233, 226, 255, 0.95), rgba(167, 139, 250, 0.6) 48%, rgba(139, 92, 246, 0.28) 74%, transparent 84%); filter: blur(8px); animation: orb-core 4.4s ease-in-out infinite; }
+  .orb-xl::after { content: ''; position: absolute; inset: -14px; border-radius: inherit; z-index: -1; background: radial-gradient(circle, rgba(139, 92, 246, 0.5), transparent 70%); filter: blur(18px); }
+  .orb-xl .eye { position: relative; z-index: 2; width: 17px; height: 17px; border-radius: 50%; background: #fff; box-shadow: 0 0 13px rgba(255, 255, 255, 0.9); animation: orb-blink 5.2s ease-in-out infinite; }
+  .orb-xl .eye::after { content: ''; position: absolute; top: 2px; left: 3px; width: 5.5px; height: 5.5px; border-radius: 50%; background: rgba(255, 255, 255, 0.95); box-shadow: 0 0 6px rgba(255, 255, 255, 0.9); animation: orb-twinkle 3.6s ease-in-out infinite; }
+  /* two little sparkles circling the ball, like the widget */
+  .orb-xl .spark { position: absolute; top: 50%; left: 50%; width: 8px; height: 8px; margin: -4px; border-radius: 50%; z-index: 5; background: radial-gradient(circle, #ffffff 0%, #d8ccff 55%, transparent 75%); box-shadow: 0 0 12px 3px rgba(196, 181, 253, 0.9); animation: orb-orbit-a 6.5s linear infinite; }
+  .orb-xl .spark.s2 { width: 6px; height: 6px; margin: -3px; background: radial-gradient(circle, #ffffff 0%, #c4b5fd 55%, transparent 75%); box-shadow: 0 0 10px 2px rgba(167, 139, 250, 0.85); animation: orb-orbit-b 9s linear infinite reverse; }
+  @keyframes orb-breathe { 0%, 100% { scale: 1; } 50% { scale: 1.035; } }
+  @keyframes orb-core { 0%, 100% { transform: scale(0.9); opacity: 0.72; } 50% { transform: scale(1.06); opacity: 0.96; } }
+  @keyframes orb-blink { 0%, 91%, 100% { transform: scaleY(1); } 94% { transform: scaleY(0.14); } 97% { transform: scaleY(1); } }
+  @keyframes orb-twinkle { 0%, 100% { opacity: 0.6; transform: scale(0.8); } 50% { opacity: 1; transform: scale(1.15); } }
+  @keyframes orb-orbit-a { from { transform: rotate(0deg) translateX(124px); } to { transform: rotate(360deg) translateX(124px); } }
+  @keyframes orb-orbit-b { from { transform: rotate(0deg) translateX(136px) translateY(8px); } to { transform: rotate(360deg) translateX(136px) translateY(8px); } }
+  @keyframes orb-roam { 0%, 100% { transform: translate(0, 0); } 22% { transform: translate(-42px, -24px); } 48% { transform: translate(48px, 18px); } 72% { transform: translate(-24px, 32px); } }
 
-  .tile.dark .label { color: rgba(255, 255, 255, 0.4); }
-  .tile.dark p { color: rgba(255, 255, 255, 0.55); }
-
-  .chat-mock { display: flex; flex-direction: column; gap: 10px; margin-top: 8px; }
-
-  .m { max-width: 88%; padding: 10px 14px; border-radius: 14px; font-size: 13.5px; line-height: 1.5; }
-  .m.you { align-self: flex-end; background: linear-gradient(135deg, rgba(196, 181, 253, 0.34), rgba(94, 234, 212, 0.26)); border-bottom-right-radius: 4px; }
-  .m.nomi { align-self: flex-start; background: rgba(255, 255, 255, 0.09); border-bottom-left-radius: 4px; color: rgba(255, 255, 255, 0.75); }
-  .m.nomi b { color: #fff; font-weight: 600; }
-
-  .winline { display: flex; gap: 8px; flex-wrap: wrap; }
-
-  .win {
-    font-family: var(--mono);
-    font-size: 11px;
-    padding: 5px 12px;
-    border-radius: 999px;
-    background: rgba(20, 184, 166, 0.12);
-    border: 1px solid rgba(20, 184, 166, 0.3);
-    color: #0f766e;
+  .notify {
+    position: absolute; top: 16%; right: 0;
+    background: rgba(20, 14, 34, 0.92); border: 1px solid rgba(196, 181, 253, 0.25);
+    color: var(--ink); font-size: 14px; padding: 12px 16px; border-radius: 16px 16px 16px 4px;
+    box-shadow: 0 20px 50px -20px rgba(0, 0, 0, 0.85), 0 0 24px rgba(139, 92, 246, 0.16); white-space: nowrap;
+    opacity: 0; transform: translateY(8px) scale(0.92);
+    transition: opacity 0.45s var(--ease), transform 0.45s var(--ease);
   }
+  .notify.show { opacity: 1; transform: translateY(0) scale(1); }
+  /* the skill bubble hops around the orb as it cycles */
+  .notify.pos-a { top: 12%; right: -2%; left: auto; bottom: auto; border-radius: 16px 16px 16px 4px; }
+  .notify.pos-b { top: 8%; left: -4%; right: auto; bottom: auto; border-radius: 16px 16px 4px 16px; }
+  .notify.pos-c { bottom: 10%; right: 0; top: auto; left: auto; border-radius: 16px 4px 16px 16px; }
+  .notify.pos-d { bottom: 14%; left: -2%; top: auto; right: auto; border-radius: 4px 16px 16px 16px; }
+  .hero h1 .forget { color: var(--ink-3); }
+  .hero h1 .doesnt { color: var(--ink); }
+  .hero h1 .doesnt b { color: var(--purple-2); font-weight: 600; }
 
-  .tile.dark .win { background: rgba(94, 234, 212, 0.14); border-color: rgba(94, 234, 212, 0.3); color: #99f6e4; }
+  /* ---------- hallmark hero choreography: everything arrives in order,
+     the orb last, swooping in like it just noticed you ---------- */
+  .hero .eyebrow, .hero h1, .hero .lede, .hero .hero-cta { opacity: 0; animation: rise-in 0.9s var(--ease) forwards; }
+  .hero h1 { animation-delay: 0.12s; }
+  .hero .lede { animation-delay: 0.28s; }
+  .hero .hero-cta { animation-delay: 0.44s; }
+  .nomi-stage { opacity: 0; animation: orb-arrive 1.15s cubic-bezier(0.22, 1, 0.36, 1) 0.5s forwards; }
+  @keyframes rise-in { from { opacity: 0; transform: translateY(26px); } to { opacity: 1; transform: none; } }
+  @keyframes orb-arrive { from { opacity: 0; transform: translate(90px, -60px) scale(0.6); filter: blur(10px); } to { opacity: 1; transform: none; filter: none; } }
+  /* the hero pieces already animate in — don't double-hide them via .reveal */
+  .hero .reveal { opacity: unset; transform: unset; transition: none; }
 
-  .ghosts { display: flex; gap: 8px; flex-wrap: wrap; margin-top: auto; }
-
-  .ghost {
-    font-family: var(--mono);
-    font-size: 11px;
-    letter-spacing: 0.06em;
-    padding: 6px 13px;
-    border-radius: 999px;
-    border: 1px dashed rgba(23, 23, 30, 0.25);
-    color: var(--ink-faint);
+  /* ---------- the hallmark statements: the whole idea, one line at a time ---------- */
+  .statements { padding: 130px 0 60px; }
+  .statements .st {
+    min-height: 42vh; display: flex; align-items: center; justify-content: center;
+    font-size: clamp(44px, 8vw, 104px); font-weight: 700; letter-spacing: -0.04em; text-align: center;
   }
+  .statements .st span { color: var(--ink-3); transition: color 0.9s ease; }
+  .statements .st.reveal.in span { color: var(--ink); }
+  .statements .st b { font-weight: 700; }
+  .statements .st.reveal.in b { color: var(--purple-2); }
+  .statements .st.last.reveal.in span { color: var(--ink-2); font-weight: 500; font-size: 0.5em; letter-spacing: -0.02em; }
 
-  /* ---------- pricing ---------- */
+  /* ---------- feedback ---------- */
+  .fb { max-width: 640px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; }
+  .fb-field { display: flex; flex-direction: column; gap: 8px; }
+  .fb-field label { font-size: 13.5px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-2); }
+  .fb-field label em { font-style: normal; text-transform: none; letter-spacing: 0; color: var(--ink-3); margin-left: 6px; }
+  .fb textarea, .fb input { width: 100%; background: #141019; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 16px; color: var(--ink); font: inherit; font-size: 15px; padding: 16px 18px; resize: vertical; transition: border-color 0.25s ease, box-shadow 0.25s ease; }
+  .fb textarea:focus, .fb input:focus { outline: none; border-color: rgba(139, 92, 246, 0.6); box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.14); }
+  .fb textarea::placeholder, .fb input::placeholder { color: var(--ink-3); }
+  .fb .invalid { border-color: rgba(248, 113, 113, 0.7); box-shadow: 0 0 0 4px rgba(248, 113, 113, 0.12); }
+  .fb .valid { border-color: rgba(74, 222, 128, 0.55); }
+  .fb-err { color: #f8a3a3; font-size: 13.5px; }
+  .fb button { align-self: flex-start; }
+  .fb button[disabled] { opacity: 0.6; pointer-events: none; }
+  .fb-note { color: var(--ink-3); font-size: 13.5px; }
+  .fb-note.ok { color: #86efac; }
+  .fb-note.bad { color: #f8a3a3; }
 
-  .plans { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 16px; margin-top: 44px; }
-
-  .plan {
-    border-radius: 32px;
-    background: var(--glass);
-    border: 1px solid var(--glass-edge);
-    backdrop-filter: blur(26px) saturate(1.35);
-    -webkit-backdrop-filter: blur(26px) saturate(1.35);
-    box-shadow: var(--shadow-card);
-    padding: 34px 30px;
-    display: flex;
-    flex-direction: column;
-  }
-
-  .plan.pro { position: relative; overflow: hidden; }
-
-  .plan.pro::before {
-    content: '';
-    position: absolute;
-    inset: 12px;
-    border-radius: 24px;
-    background: radial-gradient(80% 80% at 20% 15%, rgba(196, 181, 253, 0.45), transparent 62%),
-      radial-gradient(80% 80% at 85% 90%, rgba(94, 234, 212, 0.42), transparent 62%);
-    filter: blur(18px);
-  }
-
-  .plan.pro > * { position: relative; }
-
-  .plan .price { font-size: 42px; font-weight: 700; letter-spacing: -0.03em; margin-top: 12px; font-variant-numeric: tabular-nums; }
-  .plan .price small { font-size: 14px; font-weight: 400; color: var(--ink-soft); letter-spacing: 0; }
-
-  .plan ul { list-style: none; margin: 18px 0 26px; display: flex; flex-direction: column; gap: 9px; font-size: 14.5px; color: var(--ink-soft); }
-  .plan li::before { content: '✓'; color: var(--teal-deep); font-weight: 700; margin-right: 10px; font-size: 12px; }
-
-  .plan .btn { margin-top: auto; text-align: center; }
-
-  /* ---------- waitlist / footer ---------- */
-
-  .cta-block { text-align: center; padding: 130px 0 40px; }
-  .cta-block h2 { font-size: clamp(30px, 3.6vw, 44px); font-weight: 700; letter-spacing: -0.03em; margin-top: 14px; }
-
-  .waitlist { margin: 36px auto 0; display: flex; gap: 10px; max-width: 460px; }
-
-  .waitlist input {
-    flex: 1;
-    min-width: 0;
-    padding: 13px 20px;
-    border-radius: 999px;
-    border: 1px solid var(--glass-edge);
-    background: var(--glass);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    color: var(--ink);
-    box-shadow: var(--shadow-card);
-  }
-
-  .waitlist input::placeholder { color: var(--ink-faint); }
-  .note { margin-top: 14px; font-size: 13px; color: var(--ink-faint); }
-
-  footer {
-    margin-top: 90px;
-    border-top: 1px solid var(--line);
-    padding: 40px 0 56px;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 16px;
-    align-items: center;
-    justify-content: space-between;
-    color: var(--ink-faint);
-    font-size: 13px;
-  }
-
-  footer .creed { font-family: var(--mono); letter-spacing: 0.12em; font-size: 11px; }
-
-  .reveal { opacity: 0; transform: translateY(26px); transition: opacity 800ms var(--ease), transform 800ms var(--ease); }
-  .reveal.in { opacity: 1; transform: none; }
-
-  @media (max-width: 920px) {
-    .hero { grid-template-columns: 1fr; padding-top: 60px; }
-    .stage { order: -1; }
-    .browser { transform: none; }
+  @media (max-width: 860px) {
+    .hero { grid-template-columns: 1fr; gap: 20px; text-align: left; }
+    .nomi-stage { height: 320px; margin-top: 10px; }
+    .grid, .grid.two, .steps { grid-template-columns: 1fr; }
+    .panel.wide { grid-template-columns: 1fr; }
     .nav-links { display: none; }
-    .s3, .s4, .s5, .s6, .s7 { grid-column: 1 / -1; }
   }
-
   @media (prefers-reduced-motion: reduce) {
-    *, *::before, *::after { animation: none !important; transition: none !important; }
-    .reveal { opacity: 1; transform: none; }
-    .browser { transform: none; }
-    html { scroll-behavior: auto; }
+    * { animation: none !important; }
+    .reveal { opacity: 1; transform: none; transition: none; }
+    .glow { display: none; }
   }
 </style>
 </head>
 <body>
 
+<div class="glow a"></div>
+<div class="glow b"></div>
+<div class="glow c"></div>
+
 <nav>
-  <div class="nav-pill">
-    <a class="wordmark" href="#">
-      <svg width="20" height="20" viewBox="0 0 22 22" aria-hidden="true">
-        <defs>
-          <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0" stop-color="#c4b5fd"/><stop offset="1" stop-color="#5eead4"/>
-          </linearGradient>
-        </defs>
-        <circle cx="11" cy="11" r="10" fill="url(#g)"/>
-        <rect x="7.2" y="7.5" width="2.2" height="7" rx="1.1" fill="#17171e"/>
-        <rect x="12.6" y="7.5" width="2.2" height="7" rx="1.1" fill="#17171e"/>
-      </svg>
-      Nomi
-    </a>
+  <div class="nav-inner" id="nav">
+    <a class="brand" href="#top" style="text-decoration:none;color:inherit"><span class="nomi-mini"><i></i><i></i></span>Nomi</a>
     <div class="nav-links">
-      <a href="#glance">At a glance</a>
-      <a href="#pricing">Pricing</a>
+      <a href="#idea">The idea</a>
+      <a href="#intelligence">Intelligence</a>
+      <a href="#features">Features</a>
+      <a href="#privacy">Privacy</a>
     </div>
-    <a class="btn ink" href="#waitlist">Get early access</a>
+    <span class="nav-pill">BETA</span>
   </div>
 </nav>
 
-<header class="shell hero">
-  <div>
-    <span class="tag">Chrome extension · early access</span>
-    <h1>Not another AI assistant. <em>Just a companion.</em></h1>
-    <p class="lede">
-      Nomi lives beside your browser. It never clicks, never types, never takes
-      control — it shares your workspace, notices your day, and remembers it so
-      you don't have to.
-    </p>
-    <div class="hero-cta">
-      <a class="btn ink" href="#waitlist">Join the waitlist</a>
-      <a class="btn" href="#glance">See it at a glance</a>
-      <span class="hero-note">100% ON-DEVICE</span>
-    </div>
-  </div>
+<main class="wrap" id="top">
 
-  <div class="stage">
-    <div class="browser" id="browser">
-      <div class="browser-bar">
-        <span class="dot"></span><span class="dot"></span><span class="dot"></span>
-        <span class="addr">leetcode.com/problems/lru-cache</span>
-      </div>
-      <div class="pageview">
-        <div class="skel w1"></div>
-        <div class="skel w2"></div>
-        <div class="skel w3"></div>
-        <div class="skel w4"></div>
-        <div class="code-skel">
-          <div class="code-line a"></div>
-          <div class="code-line b"></div>
-          <div class="code-line d"></div>
-          <div class="code-line c"></div>
-        </div>
-        <div class="mock-bubble" id="bubble" aria-live="polite"></div>
-        <div class="orb" id="orb" role="img" aria-label="Nomi, a glass orb with two eyes">
-          <div class="eyes" id="eyes"><div class="eye"></div><div class="eye"></div></div>
-        </div>
+  <header class="hero">
+    <div>
+      <span class="eyebrow reveal">A companion with a memory · Beta</span>
+      <h1 class="reveal d1"><span class="forget">You forget.</span><br /><span class="doesnt">Nomi <b>doesn't.</b></span></h1>
+      <p class="lede reveal d2">It lives beside your browser, noticing what you do, understanding it, and remembering it, so you don't have to hold it all in your head.</p>
+      <div class="hero-cta reveal d3">
+        <a class="btn primary" href="#features">See what it does</a>
+        <a class="btn ghost" href="#install">How to start</a>
+        <span class="hero-note">ON-DEVICE · IN DEVELOPMENT</span>
       </div>
     </div>
-  </div>
-</header>
-
-<main class="shell">
-
-  <section id="glance">
-    <div class="section-head">
-      <span class="label reveal">At a glance</span>
-      <h2 class="reveal">One companion. A whole day, held gently.</h2>
+    <div class="nomi-stage reveal d2">
+      <div class="orb-xl" role="img" aria-label="Nomi, a glowing blue glass orb with two small white eyes">
+        <span class="eye"></span><span class="eye"></span>
+        <span class="spark"></span><span class="spark s2"></span>
+      </div>
+      <div class="notify pos-a" id="skillBubble">👋 Hey, I'm Nomi. Right here.</div>
     </div>
+  </header>
 
-    <div class="bento-wrap">
-      <div class="bento">
+  <section class="statements" aria-label="What Nomi does">
+    <div class="st reveal"><span>It notices.</span></div>
+    <div class="st reveal"><span>It understands.</span></div>
+    <div class="st reveal"><span>It <b>remembers.</b></span></div>
+    <div class="st last reveal"><span>So you don't have to hold it all in your head.</span></div>
+  </section>
 
-        <div class="tile dark s7 reveal">
-          <div class="top">
-            <span class="label">Ask your memory</span>
-            <span class="label">9:41 PM · ON-DEVICE</span>
-          </div>
-          <div class="chat-mock">
-            <div class="m you">when did I last study graphs?</div>
-            <div class="m nomi">That was <b>last Tuesday around 7:40 PM</b> — about 1h 20m on leetcode.com.</div>
-            <div class="m you">remind me to stretch in 20 minutes</div>
-            <div class="m nomi">Got it — I'll nudge you about <b>"stretch"</b> in 20m.</div>
-          </div>
-        </div>
-
-        <div class="tile s5 reveal">
-          <div class="top"><span class="label">Together today</span><span class="tag">live</span></div>
-          <canvas data-dots="5h 40m" data-color="#17171e" height="34"></canvas>
-          <p>Counted quietly, told as a story — never a score. Every evening it comes back in words:</p>
-          <p class="quote">"Today felt productive. We were at it from 9:10 to 4:20."</p>
-        </div>
-
-        <div class="tile s4 reveal">
-          <span class="label">Notices</span>
-          <h3>Quiet attention</h3>
-          <p>Focus streaks, long stretches, the 3pm tab spiral. A few gentle notes a day, at most.</p>
-          <p class="quote">"You've been locked into leetcode.com for over an hour. Nice work."</p>
-        </div>
-
-        <div class="tile s4 reveal">
-          <span class="label">Celebrates</span>
-          <h3>Someone saw it happen</h3>
-          <p>When the Hard one finally gives in, the little orb bounces.</p>
-          <div class="winline" style="margin-top:auto">
-            <span class="win">✓ lru-cache · Hard</span>
-            <span class="win">✓ two-sum</span>
-          </div>
-        </div>
-
-        <div class="tile s4 reveal">
-          <span class="label">Stays with you</span>
-          <h3>Small when it should be</h3>
-          <p>Left alone, it tucks itself into the corner and dozes. Hover — or give it news — and it's back.</p>
-          <p class="quote">"Welcome back. It was quiet without you."</p>
-        </div>
-
-        <div class="tile s6 reveal">
-          <span class="label">Invisible zones</span>
-          <h3>Some places don't exist to Nomi</h3>
-          <p>Banking, health, and mail are built-in blind spots — and you can add any site. No keystrokes, no messages, no page text, ever.</p>
-          <div class="ghosts">
-            <span class="ghost">banking</span>
-            <span class="ghost">health</span>
-            <span class="ghost">mail</span>
-            <span class="ghost">incognito</span>
-            <span class="ghost">+ yours</span>
-          </div>
-        </div>
-
-        <div class="tile s3 reveal">
-          <div class="top"><span class="label">Data leaving</span></div>
-          <canvas data-dots="0" data-color="#17171e" height="34"></canvas>
-          <p>Bytes. Always. No cloud, no accounts, no telemetry.</p>
-        </div>
-
-        <div class="tile s3 reveal">
-          <div class="top"><span class="label">Sealed</span><span class="tag">AES-256</span></div>
-          <h3 style="margin-top:4px">Yours to erase</h3>
-          <p>Encrypted on-device. Export all of it, or forget everything — key included.</p>
-        </div>
-
+  <section id="idea">
+    <div class="head">
+      <span class="eyebrow reveal">The idea</span>
+      <h2 class="reveal d1">Everything you do online, held in one quiet mind.</h2>
+    </div>
+    <div class="grid">
+      <div class="panel reveal">
+        <span class="k">Notices</span>
+        <h3>Quiet attention</h3>
+        <p>It sees the shape of your day: the deep stretches, the tab spirals, the late nights. It never reads a keystroke.</p>
+      </div>
+      <div class="panel reveal d1">
+        <span class="k">Understands</span>
+        <h3>Context, not clicks</h3>
+        <p>Not “you opened GitHub,” but “42 minutes reviewing a pull request, after two problems.” It knows the work, not just the site.</p>
+      </div>
+      <div class="panel reveal d2">
+        <span class="k">Remembers</span>
+        <h3>So you don't have to</h3>
+        <p>Ask it anything about your days and it answers from what it actually saw: grounded, specific, never made up.</p>
       </div>
     </div>
   </section>
 
-  <section id="pricing">
-    <div class="section-head">
-      <span class="label reveal">Pricing</span>
-      <h2 class="reveal">Quiet is free.</h2>
+  <section id="intelligence">
+    <div class="head">
+      <span class="eyebrow reveal">Intelligence</span>
+      <h2 class="reveal d1">It doesn't log. It reasons.</h2>
+      <p class="lede reveal d2" style="max-width:52ch">Before it answers, Nomi thinks in steps. It consults your memory, your projects, and the page in front of you, then says one useful thing.</p>
     </div>
-    <div class="plans">
-      <div class="plan reveal">
-        <span class="label">Free</span>
-        <span class="price">$0</span>
-        <ul>
-          <li>The companion, on every page</li>
-          <li>7-day memory, encrypted on-device</li>
-          <li>Daily story &amp; gentle nudges</li>
-          <li>Chat, memory search, reminders</li>
-        </ul>
-        <a class="btn" href="#waitlist">Join the waitlist</a>
+    <div class="grid two">
+      <div class="panel tall reveal">
+        <span class="k">Reasoning engine</span>
+        <h3>Thinks before it speaks</h3>
+        <p>A step-by-step mind that pulls from what it knows: your history, your open loops, your documents. Every reply is grounded in the truth of your day.</p>
       </div>
-      <div class="plan pro reveal">
-        <span class="label">Pro — planned</span>
-        <span class="price">$6<small>/month</small></span>
-        <ul>
-          <li>Unlimited memory</li>
-          <li>Desktop companion &amp; voice</li>
-          <li>Timeline replay &amp; deeper insights</li>
-          <li>Personalities &amp; plugins</li>
-          <li>Optional end-to-end encrypted sync</li>
-        </ul>
-        <a class="btn ink" href="#waitlist">Get early access</a>
-      </div>
+      <div class="panel reveal d1"><span class="k">Intent</span><h3>Holds your loose ends</h3><p>“I'll read this later.” “I should reply.” Kept as unfinished intentions, not lost in forty tabs.</p></div>
+      <div class="panel reveal d2"><span class="k">Learning</span><h3>Learns you slowly</h3><p>Your peak hours, your stack, your usual distractions. Learned from evidence over days, never a single event.</p></div>
+      <div class="panel reveal d1"><span class="k">Projects</span><h3>Groups your work</h3><p>Résumé, portfolio, a hackathon: every page quietly sorted into what it's really for.</p></div>
+      <div class="panel reveal d2"><span class="k">Care</span><h3>Notices when you push too hard</h3><p>A late-night marathon with no breaks earns a gentle check-in with the evidence, never a guilt trip.</p></div>
     </div>
   </section>
 
-  <section class="cta-block" id="waitlist">
-    <span class="label reveal">Early access</span>
-    <h2 class="reveal">Someone is finally in your corner.</h2>
-    <form class="waitlist reveal" id="waitlist-form">
-      <input type="email" required placeholder="you@example.com" aria-label="Email address" id="email" />
-      <button class="btn ink" type="submit">Join the waitlist</button>
+  <section id="features">
+    <div class="head">
+      <span class="eyebrow reveal">Everything it does</span>
+      <h2 class="reveal d1">A quiet toolkit.</h2>
+    </div>
+    <div class="grid">
+      <div class="panel reveal"><span class="k">Voice</span><h3>Talk to it. It talks back</h3><p>Hold and speak, even in Hinglish. It answers out loud in a natural voice.</p></div>
+      <div class="panel reveal d1"><span class="k">The bag</span><h3>Save &amp; recall anything</h3><p>“Keep this.” Later: “what did I save about rate limiting?” Found, and opened with a tap.</p></div>
+      <div class="panel reveal d2"><span class="k">Reminders</span><h3>By time, or by place</h3><p>“In twenty minutes,” or “when I open Gmail.” It understands “in an hour,” and fixes itself when you correct it.</p></div>
+      <div class="panel wide reveal">
+        <div><span class="k">On the page</span><h3 style="margin-top:14px">Summarize · Explain · Read aloud · Translate</h3></div>
+        <p>“Summarize this.” “Explain this error.” “Read it to me.” “Translate to Hindi.” Grounded in what's on your screen, and it never reads a URL out loud.</p>
+      </div>
+      <div class="panel reveal"><span class="k">Focus</span><h3>Focus with me</h3><p>“Twenty-five minutes.” It holds the clock and stays perfectly quiet until the bell.</p></div>
+      <div class="panel reveal d1"><span class="k">Instant</span><h3>Math · Time · Dates</h3><p>“15% of 2400,” “3pm PST in IST,” “days until August 15.” Offline, instant.</p></div>
+      <div class="panel reveal d2"><span class="k">Never in the way</span><h3>Resize · Move · Hide</h3><p>Drag it anywhere, size it small to large, or let it tuck into the corner and doze until you need it.</p></div>
+    </div>
+  </section>
+
+  <section id="privacy" class="privacy">
+    <span class="eyebrow reveal">Privacy</span>
+    <h2 class="reveal d1" style="margin-top:22px">It never leaves your device.</h2>
+    <p class="lede reveal d2" style="margin:0 auto; text-align:center">No cloud. No accounts. No telemetry. Encrypted on your machine, and yours to erase, key included.</p>
+    <div class="row reveal d3">
+      <span class="tagpill">On-device</span>
+      <span class="tagpill">AES-256</span>
+      <span class="tagpill">No accounts</span>
+      <span class="tagpill">No telemetry</span>
+      <span class="tagpill">Banking · health · mail stay invisible</span>
+    </div>
+  </section>
+
+  <section id="install">
+    <div class="head">
+      <span class="eyebrow reveal">How to start</span>
+      <h2 class="reveal d1">Running in a minute.</h2>
+    </div>
+    <div class="steps">
+      <div class="step reveal"><span class="n">STEP 01</span><h3>Load it</h3><p>Open <code>chrome://extensions</code>, enable Developer mode, and load the Nomi build.</p></div>
+      <div class="step reveal d1"><span class="n">STEP 02</span><h3>Add a brain</h3><p>Paste a free Gemini key in Settings for the smartest, reasoning replies.</p></div>
+      <div class="step reveal d2"><span class="n">STEP 03</span><h3>That's it</h3><p>Nomi appears on every page. Tap to talk, or just let it remember.</p></div>
+    </div>
+  </section>
+
+  <section id="feedback">
+    <div class="head">
+      <span class="eyebrow reveal">Feedback</span>
+      <h2 class="reveal d1">Found something? Tell me.</h2>
+      <p class="lede reveal d2" style="max-width:52ch">Nomi is early. If something's broken, confusing, or missing, send it straight over. It reaches the person building it.</p>
+    </div>
+    <form class="fb reveal d2" id="fbForm" novalidate>
+      <div class="fb-field">
+        <label for="fbMsg">What did you find? <em>required</em></label>
+        <textarea id="fbMsg" required rows="4" maxlength="2000" placeholder="What's broken, confusing, or missing?"></textarea>
+        <p class="fb-err" id="fbMsgErr" role="alert" hidden>Please write a few words about what you found.</p>
+      </div>
+      <div class="fb-field">
+        <label for="fbEmail">Your email <em>required, so I can follow up</em></label>
+        <input id="fbEmail" type="email" required autocomplete="email" inputmode="email" placeholder="you@example.com" />
+        <p class="fb-err" id="fbEmailErr" role="alert" hidden>That doesn't look like a valid email. Check it and try again.</p>
+      </div>
+      <button class="btn primary" type="submit" id="fbBtn">Send feedback</button>
+      <p class="fb-note" id="fbNote">No account needed. Your note goes directly to the maker.</p>
     </form>
-    <p class="note" id="wl-note">No spam. One email when Nomi is ready for you.</p>
   </section>
 
-  <footer>
-    <span class="creed">OBSERVE · UNDERSTAND · REMEMBER · SUPPORT · NEVER CONTROL</span>
-    <span>© 2026 Nomi</span>
-  </footer>
+  <section class="closing">
+    <span class="eyebrow reveal">Beta · in development</span>
+    <h2 class="reveal d1" style="margin-top:22px">In Beta.</h2>
+    <p class="lede reveal d2" style="margin:0 auto; text-align:center">Nomi is being built in the open. It runs entirely on your device today, and grows sharper every week. No waitlist. Just load it and go.</p>
+    <div class="cta reveal d3">
+      <a class="btn primary" href="#install">How to start</a>
+      <a class="btn ghost" href="#features">See the features</a>
+    </div>
+  </section>
 
 </main>
 
+<footer>
+  <div class="wrap foot">
+    <span class="brand"><span class="nomi-mini"><i></i><i></i></span>Nomi</span>
+    <span>Observe · Understand · Remember · Never control</span>
+    <span class="maker">Maker · <a href="https://www.linkedin.com/in/ayushkumar277" target="_blank" rel="noopener">LinkedIn</a> · <a href="https://github.com/Ayush277" target="_blank" rel="noopener">GitHub</a></span>
+    <span>© 2026 · Beta</span>
+  </div>
+</footer>
+
 <script>
-  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // reveal on scroll
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach((en) => { if (en.isIntersecting) { en.target.classList.add('in'); io.unobserve(en.target); } });
+  }, { threshold: 0.16, rootMargin: '0px 0px -8% 0px' });
+  document.querySelectorAll('.reveal').forEach((el) => io.observe(el));
 
-  // ----- dot-matrix numerals (5×7) -----
-  const GLYPHS = {
-    '0': ['01110','10001','10011','10101','11001','10001','01110'],
-    '1': ['00100','01100','00100','00100','00100','00100','01110'],
-    '2': ['01110','10001','00001','00010','00100','01000','11111'],
-    '3': ['11110','00001','00001','01110','00001','00001','11110'],
-    '4': ['00010','00110','01010','10010','11111','00010','00010'],
-    '5': ['11111','10000','11110','00001','00001','10001','01110'],
-    '6': ['01110','10000','11110','10001','10001','10001','01110'],
-    '7': ['11111','00001','00010','00100','01000','01000','01000'],
-    '8': ['01110','10001','10001','01110','10001','10001','01110'],
-    '9': ['01110','10001','10001','01111','00001','00001','01110'],
-    'h': ['10000','10000','10110','11001','10001','10001','10001'],
-    'm': ['00000','00000','11010','10101','10101','10101','10101'],
-    ' ': ['00000','00000','00000','00000','00000','00000','00000'],
-  };
-
-  document.querySelectorAll('canvas[data-dots]').forEach((cv) => {
-    const text = cv.dataset.dots;
-    const color = cv.dataset.color || '#17171e';
-    const sp = 6, r = 1.9, gap = 10;
-    const dpr = devicePixelRatio || 1;
-    const w = [...text].reduce((acc) => acc + 5 * sp + gap, 0) - gap;
-    const h = 7 * sp;
-    cv.width = w * dpr; cv.height = h * dpr;
-    cv.style.width = w + 'px'; cv.style.height = h + 'px';
-    const ctx = cv.getContext('2d');
-    ctx.scale(dpr, dpr);
-    ctx.fillStyle = color;
-    let x0 = 0;
-    for (const ch of text) {
-      const g = GLYPHS[ch] || GLYPHS[' '];
-      g.forEach((row, ry) => {
-        [...row].forEach((bit, rx) => {
-          if (bit === '1') { ctx.beginPath(); ctx.arc(x0 + rx * sp + r, ry * sp + r, r, 0, 7); ctx.fill(); }
-        });
-      });
-      x0 += 5 * sp + gap;
-    }
-  });
-
-  // ----- the orb is alive -----
-  const orb = document.getElementById('orb');
-  const eyes = document.getElementById('eyes');
-  const browser = document.getElementById('browser');
-
-  if (!reduced) {
-    (function blink() {
-      setTimeout(() => {
-        orb.classList.add('blink');
-        setTimeout(() => orb.classList.remove('blink'), 140);
-        blink();
-      }, 3800 + Math.random() * 4200);
-    })();
-
-    addEventListener('mousemove', (e) => {
-      const r = orb.getBoundingClientRect();
-      const dx = e.clientX - (r.left + r.width / 2);
-      const dy = e.clientY - (r.top + r.height / 2);
-      const d = Math.hypot(dx, dy) || 1;
-      const pull = Math.min(d / 120, 1) * 4;
-      eyes.style.transform = `translate(${(dx / d) * pull}px, ${(dy / d) * pull}px)`;
-      const nx = e.clientX / innerWidth - 0.5;
-      const ny = e.clientY / innerHeight - 0.5;
-      browser.style.transform = `rotateX(${4 - ny * 4}deg) rotateY(${-7 + nx * 6}deg) rotateZ(0.4deg)`;
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (!reduce) {
+    // nav hide on scroll-down, show on scroll-up
+    let last = 0; const nav = document.getElementById('nav');
+    addEventListener('scroll', () => {
+      const y = scrollY;
+      nav.style.transform = y > last && y > 200 ? 'translateY(-140%)' : 'none';
+      last = y;
     }, { passive: true });
   }
 
-  // ----- cycling companion lines -----
-  const LINES = [
-    "I've noticed you've been focused for an hour. Nice work.",
-    'That Hard problem took three sessions. You got it. 🎉',
-    'Water break? I’ll hold your spot.',
-    'Today felt productive.',
-    'Welcome back. It was quiet without you.',
+  // Nomi shows off his skills: the bubble hops around the orb and cycles
+  // through everything he can do.
+  const skills = [
+    '👋 Hey, I’m Nomi. Watch what I can do.',
+    '🧠 I remember your days. Ask me anything about them.',
+    '⏰ “Remind me at 6 to call mom.” Done.',
+    '🎒 “Keep this in my bag.” Saved, and I’ll fetch it back.',
+    '🎙️ Talk to me. I talk back, even in Hinglish.',
+    '⏱️ “25 minute focus timer.” Ticking beside the orb.',
+    '📄 “Summarize this page.” “Explain this error.” On it.',
+    '📚 Upload your PDFs. I answer from YOUR notes first.',
+    '🗂️ I quietly group your tabs into real projects.',
+    '💜 Late night, no breaks? I’ll check in on you.',
+    '🔒 All of it stays on your device. Encrypted.',
   ];
-  const bubble = document.getElementById('bubble');
-  let li = 0;
-  function cycle() {
-    bubble.textContent = LINES[li % LINES.length];
-    bubble.classList.add('on');
-    setTimeout(() => bubble.classList.remove('on'), 4600);
-    li++;
+  const bubble = document.getElementById('skillBubble');
+  if (bubble && !reduce) {
+    const spots = ['pos-a', 'pos-b', 'pos-c', 'pos-d'];
+    let si = 0;
+    const showSkill = () => {
+      bubble.classList.remove('show');
+      setTimeout(() => {
+        bubble.textContent = skills[si % skills.length];
+        bubble.classList.remove(...spots);
+        bubble.classList.add(spots[si % spots.length], 'show');
+        si++;
+      }, 460);
+    };
+    setTimeout(() => bubble.classList.add('show'), 900);
+    setTimeout(() => { si = 1; setInterval(showSkill, 3600); }, 3600);
+  } else if (bubble) {
+    bubble.classList.add('show');
   }
-  setTimeout(cycle, 1400);
-  setInterval(cycle, 6600);
 
-  // ----- reveals -----
-  const io = new IntersectionObserver((entries) => {
-    for (const en of entries) {
-      if (en.isIntersecting) { en.target.classList.add('in'); io.unobserve(en.target); }
-    }
-  }, { threshold: 0.15 });
-  document.querySelectorAll('.reveal').forEach((el) => io.observe(el));
+  // feedback → straight to the maker (recipient obfuscated, never shown on the page)
+  const fbForm = document.getElementById('fbForm');
+  if (fbForm) {
+    const msgEl = document.getElementById('fbMsg');
+    const emailEl = document.getElementById('fbEmail');
+    const msgErr = document.getElementById('fbMsgErr');
+    const emailErr = document.getElementById('fbEmailErr');
+    const note = document.getElementById('fbNote');
+    const btn = document.getElementById('fbBtn');
+    // strict-enough email check: name@domain.tld, no spaces, real-looking TLD
+    const emailOk = (v) => /^[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}$/.test(v);
 
-  // ----- waitlist: no backend yet — a prefilled email, honestly -----
-  document.getElementById('waitlist-form').addEventListener('submit', (e) => {
-    e.preventDefault();
-    const email = document.getElementById('email').value;
-    location.href = `mailto:prince908ayush@gmail.com?subject=${encodeURIComponent('Nomi waitlist')}&body=${encodeURIComponent(`Add me to the Nomi waitlist: ${email}`)}`;
-    document.getElementById('wl-note').textContent = 'Opening your mail app — send it and you’re on the list.';
-  });
+    const checkMsg = () => {
+      const bad = msgEl.value.trim().length < 5;
+      msgEl.classList.toggle('invalid', bad);
+      msgEl.classList.toggle('valid', !bad);
+      msgErr.hidden = !bad;
+      return !bad;
+    };
+    const checkEmail = () => {
+      const bad = !emailOk(emailEl.value.trim());
+      emailEl.classList.toggle('invalid', bad);
+      emailEl.classList.toggle('valid', !bad);
+      emailErr.hidden = !bad;
+      return !bad;
+    };
+    // verify as they type, once they've touched the field
+    emailEl.addEventListener('blur', checkEmail);
+    emailEl.addEventListener('input', () => { if (emailEl.classList.contains('invalid') || emailEl.classList.contains('valid')) checkEmail(); });
+    msgEl.addEventListener('blur', checkMsg);
+    msgEl.addEventListener('input', () => { if (msgEl.classList.contains('invalid') || msgEl.classList.contains('valid')) checkMsg(); });
+
+    fbForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const okMsg = checkMsg();
+      const okEmail = checkEmail();
+      if (!okMsg || !okEmail) {
+        (okMsg ? emailEl : msgEl).focus();
+        return;
+      }
+      const msg = msgEl.value.trim();
+      const email = emailEl.value.trim();
+      btn.disabled = true; btn.textContent = 'Sending…';
+      note.className = 'fb-note';
+      const to = atob('d29yay5heXVzaDI3QGdtYWlsLmNvbQ==');
+      try {
+        const res = await fetch('https://formsubmit.co/ajax/' + to, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          body: JSON.stringify({ _subject: 'Nomi feedback', _template: 'table', _replyto: email, 'From email': email, Feedback: msg }),
+        });
+        if (!res.ok) throw new Error('bad');
+        fbForm.reset();
+        msgEl.classList.remove('valid'); emailEl.classList.remove('valid');
+        note.textContent = 'Sent. Thank you, I read every one.';
+        note.classList.add('ok');
+        btn.textContent = 'Sent ✓';
+      } catch (err) {
+        // fallback: open the sender's mail app, prefilled
+        location.href = 'mailto:' + to + '?subject=' + encodeURIComponent('Nomi feedback') +
+          '&body=' + encodeURIComponent(msg + '\n\nfrom ' + email);
+        note.textContent = 'Opening your mail app to send…';
+        btn.disabled = false; btn.textContent = 'Send feedback';
+      }
+    });
+  }
 </script>
-
 </body>
 </html>

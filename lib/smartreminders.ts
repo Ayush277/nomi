@@ -5,6 +5,8 @@
 const SITE_ALIASES: Record<string, string> = {
   gmail: 'mail.google.com',
   email: 'mail.google.com',
+  mail: 'mail.google.com',
+  inbox: 'mail.google.com',
   youtube: 'youtube.com',
   yt: 'youtube.com',
   github: 'github.com',

@@ -1,5 +1,7 @@
+import type { Intention } from '../intents';
 import { dateKey, inQuietHours } from '../time';
 import type { CurrentVisit, NomiEvent, NomiSettings, VisitSession } from '../types';
+import { assessWellbeing, deriveWellbeingInput } from '../wellbeing';
 import { pickVariant } from './messages';
 
 /** Rule engine over the event stream (roadmap Week 4). Pure functions —
@@ -30,6 +32,9 @@ export interface NudgeContext {
   todaySessions: VisitSession[];
   settings: NomiSettings;
   state: NudgeState;
+  /** Open unfinished intentions (V2), highest-rank first. Optional so existing
+   * callers/tests still typecheck. */
+  openIntentions?: Intention[];
 }
 
 export interface Nudge {
@@ -118,6 +123,18 @@ const RULES: Rule[] = [
     },
   },
   {
+    // Wellbeing check-in (composite strain) — placed before break-time so the
+    // caring, evidence-bearing message wins when several signals stack.
+    id: 'wellbeing',
+    cooldownMs: 3 * 3600000,
+    evaluate(ctx) {
+      const input = deriveWellbeingInput(ctx.now, ctx.todaySessions, ctx.recentEvents, ctx.currentVisit);
+      const a = assessWellbeing(input);
+      if (!a || a.strain !== 'strained') return null;
+      return { templateKey: a.templateKey, slots: a.slots };
+    },
+  },
+  {
     id: 'break-time',
     cooldownMs: 2.5 * 3600000,
     evaluate(ctx) {
@@ -135,6 +152,42 @@ const RULES: Rule[] = [
         (e) => e.type === 'tab_switch' && e.ts > ctx.now - 5 * 60000,
       ).length;
       return switches >= 12 ? { templateKey: 'tab-storm' } : null;
+    },
+  },
+  {
+    // V2 Upgrade 10: an intention the user voiced but hasn't touched in hours.
+    id: 'intention-ignored',
+    cooldownMs: 8 * 3600000,
+    respectsFocus: true,
+    evaluate(ctx) {
+      const stale = (ctx.openIntentions ?? []).find(
+        (i) =>
+          i.source === 'phrase' &&
+          ctx.now - i.createdTs > 4 * 3600000 &&
+          ctx.now - i.lastInteractionTs > 3 * 3600000,
+      );
+      return stale ? { templateKey: 'intention-ignored', slots: { what: stale.title } } : null;
+    },
+  },
+  {
+    // V2 Upgrade 10: a long stretch on a problem page with no accepted verdict.
+    id: 'stuck',
+    cooldownMs: 2 * 3600000,
+    evaluate(ctx) {
+      const v = ctx.currentVisit;
+      if (!v) return null;
+      if (!/leetcode\.com|geeksforgeeks\.org|hackerrank\.com|codeforces\.com/.test(v.domain)) return null;
+      // Only a genuinely long single-problem stretch — past the focus-streak
+      // ack — reads as "stuck", so this never interrupts calm focus.
+      const dwell = ctx.now - v.startTs;
+      if (dwell < 75 * 60000 || dwell > 150 * 60000) return null;
+      const won = ctx.recentEvents.some(
+        (e) =>
+          e.type === 'site_signal' &&
+          e.signal?.kind === 'submission_accepted' &&
+          e.ts > v.startTs,
+      );
+      return won ? null : { templateKey: 'stuck', slots: { minutes: String(Math.round(dwell / 60000)) } };
     },
   },
   {

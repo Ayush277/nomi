@@ -286,3 +286,100 @@ button:hover {
   font-size: 10.5px;
   color: rgba(255, 255, 255, 0.35);
 }
+
+
+/* ============================================================
+   ✦ NOMI — default serene-blue glass. Deep blue gradient, frosted
+   glass cards, blue accents, digital/mono type. One clean theme.
+   ============================================================ */
+:root {
+  --blue: #3b82f6; --sky: #38bdf8;
+  --ink: #eaf1fb; --ink2: rgba(234, 241, 251, 0.62); --ink3: rgba(234, 241, 251, 0.42);
+  --glass: rgba(255, 255, 255, 0.055); --edge: rgba(255, 255, 255, 0.13);
+  --digital: ui-monospace, 'SF Mono', 'JetBrains Mono', 'Fira Code', 'Cascadia Code', Menlo, monospace;
+}
+body {
+  background:
+    radial-gradient(120% 80% at 8% -5%, #14294b, transparent 55%),
+    radial-gradient(90% 70% at 100% 0%, #0f2647, transparent 50%),
+    linear-gradient(160deg, #0d1c38 0%, #0a1730 100%) !important;
+  color: #eaf1fb !important;
+  font-family: var(--digital) !important;
+  letter-spacing: -0.01em;
+}
+body::before, body::after { display: none !important; background: none !important; animation: none !important; }
+h1, h2, h3, .brand h1, .brand-title, header h1, .tile-value {
+  color: #eaf1fb !important; -webkit-text-fill-color: #eaf1fb !important; background: none !important;
+  font-family: var(--digital) !important; font-weight: 600 !important;
+}
+p, li, strong, label, td, th, div, span { color: #eaf1fb; }
+em, .sub, .lede, small, .muted, .tile-label, .tile-sub, .doc-meta, .privacy, .hero-note { color: rgba(234, 241, 251, 0.6) !important; }
+a { color: #7dd3fc; }
+button, .btn, .dash-open, .go, .cta, .sync {
+  background: linear-gradient(135deg, #3b82f6, #38bdf8) !important; color: #fff !important;
+  border: none !important; border-radius: 12px !important; font-family: var(--digital) !important;
+  box-shadow: 0 8px 24px rgba(59, 130, 246, 0.35) !important;
+}
+input, textarea, select {
+  background: rgba(255, 255, 255, 0.05) !important; color: #eaf1fb !important;
+  border: 1px solid rgba(255, 255, 255, 0.13) !important; border-radius: 12px !important;
+  font-family: var(--digital) !important;
+}
+input::placeholder, textarea::placeholder { color: rgba(234, 241, 251, 0.5) !important; }
+input[type='checkbox'] { accent-color: #3b82f6; }
+
+.streak, .story, .wins, .timeline {
+  background: rgba(255, 255, 255, 0.055) !important; border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  border-radius: 18px !important;
+  box-shadow: 0 16px 44px rgba(4, 12, 30, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
+  backdrop-filter: blur(26px) saturate(1.35) !important; -webkit-backdrop-filter: blur(26px) saturate(1.35) !important;
+}
+.streak::before, .streak::after, .story::before,  .story::after, .wins::before,  .wins::after, .timeline::before,  .timeline::after { display: none !important; }
+.streak:hover, .story:hover, .wins:hover, .timeline:hover { border-color: rgba(125, 211, 252, 0.35) !important; transform: none; }
+
+.orb {
+  background:
+    radial-gradient(circle at 36% 27%, rgba(236, 246, 255, 0.72), transparent 20%),
+    radial-gradient(circle at 46% 44%, rgba(147, 197, 253, 0.6), rgba(59, 130, 246, 0.56) 46%, rgba(37, 99, 235, 0.5) 100%) !important;
+  border: 1px solid rgba(191, 219, 254, 0.5) !important;
+  box-shadow: 0 0 30px rgba(59, 130, 246, 0.4), 0 10px 26px rgba(20, 40, 110, 0.4) !important;
+}
+.orb .eye { background: #fff !important; }
+
+
+
+/* ✦ NOMI premium — matte black #090909, white, purple #8B5CF6 (solid cards) */
+body {
+  background: #090909 !important; color: #f5f6f8 !important;
+  font-family: -apple-system, 'SF Pro Display', BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif !important;
+  letter-spacing: -0.011em;
+}
+body::before, body::after { display: none !important; }
+h1, h2, h3, .brand h1, .brand-title, header h1, .tile-value, .card-head h3 {
+  color: #f5f6f8 !important; -webkit-text-fill-color: #f5f6f8 !important; background: none !important;
+  font-family: inherit !important; font-weight: 600 !important; letter-spacing: -0.03em !important;
+}
+p, li, strong, label, td, th { color: #f5f6f8; font-family: inherit; }
+em, .sub, .lede, .muted, .tile-label, .tile-sub, .doc-meta, .privacy, .stat-row { color: rgba(245, 246, 248, 0.56) !important; }
+a { color: #a78bfa; }
+button, .btn, .dash-open, .go, .cta, .sync {
+  background: #8b5cf6 !important; color: #fff !important; border: none !important; border-radius: 999px !important;
+  font-family: inherit !important; box-shadow: 0 8px 26px -10px rgba(139, 92, 246, 0.6) !important;
+}
+input, textarea, select {
+  background: #17141f !important; color: #f5f6f8 !important; border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-radius: 14px !important; font-family: inherit !important;
+}
+input::placeholder, textarea::placeholder { color: rgba(245, 246, 248, 0.4) !important; }
+input[type='checkbox'] { accent-color: #8b5cf6; }
+
+.streak, .story, .wins, .timeline {
+  background: #141019 !important; border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 24px !important; box-shadow: 0 24px 60px -34px rgba(0, 0, 0, 0.9) !important;
+  backdrop-filter: none !important; -webkit-backdrop-filter: none !important;
+}
+.streak::before, .streak::after, .story::before,  .story::after, .wins::before,  .wins::after, .timeline::before,  .timeline::after { display: none !important; }
+.streak:hover, .story:hover, .wins:hover, .timeline:hover { border-color: rgba(167, 139, 250, 0.35) !important; transform: none; }
+
+.orb { background: radial-gradient(circle at 35% 30%, #c4b5fd, #8b5cf6 55%, #6d28d9) !important; border: 1px solid rgba(196, 181, 253, 0.5) !important; box-shadow: 0 0 24px rgba(139, 92, 246, 0.5) !important; }
+.orb .eye { background: #fff !important; }

@@ -8,62 +8,59 @@
   </head>
   <body>
     <main>
-      <div class="orb" aria-hidden="true">
-        <span class="eye"></span>
-        <span class="eye"></span>
-      </div>
-      <h1>Hey, I'm Nomi.</h1>
-      <p class="lede">
-        I live beside your browser. I never click, never type, never take control —
-        I just share the workspace, notice how your day goes, and remember it so you don't have to.
-      </p>
+      <header class="hello">
+        <div class="orb" aria-hidden="true">
+          <span class="eye"></span>
+          <span class="eye"></span>
+          <span class="spark"></span>
+          <span class="spark s2"></span>
+        </div>
+        <h1>Hey. I'm <b>Nomi.</b></h1>
+        <p class="lede">
+          I live beside your browser. I never click, never type, never take control.
+          I just share the workspace, notice how your day goes, and remember it so you don't have to.
+        </p>
+      </header>
 
-      <div class="cards">
-        <div class="card">
-          <h2>What I notice</h2>
-          <p>
-            Which sites we spend time on and for how long. On LeetCode, I also cheer when a
-            submission is accepted. That's it.
-          </p>
+      <section class="promises">
+        <div class="promise">
+          <span class="pk">What I notice</span>
+          <p>Which sites we spend time on and for how long. On LeetCode I also cheer when a submission is accepted. That's it.</p>
         </div>
-        <div class="card">
-          <h2>What I never touch</h2>
-          <p>
-            Keystrokes, passwords, form fields, private messages. When you ask about a page I read
-            its visible text — never anything you type. Banking, health, and mail stay invisible.
-          </p>
+        <div class="promise">
+          <span class="pk">What I never touch</span>
+          <p>Keystrokes, passwords, form fields, private messages. Banking, health, and mail stay invisible to me.</p>
         </div>
-        <div class="card">
-          <h2>Where it all lives</h2>
-          <p>
-            On this device. No accounts, no telemetry. Export it or erase it any time — it's yours.
-          </p>
+        <div class="promise">
+          <span class="pk">Where it all lives</span>
+          <p>On this device, encrypted. No accounts, no telemetry. Export it or erase it any time. It's yours.</p>
         </div>
-      </div>
+      </section>
 
-      <div class="setup">
+      <section class="setup">
         <label class="field">
           <span>What should I call you?</span>
           <input id="name" type="text" placeholder="your name (optional)" maxlength="24" />
         </label>
         <div class="field">
-          <span>Pick a vibe — you can change it anytime</span>
+          <span>Pick a vibe. You can change it anytime.</span>
           <div class="personas" id="personas">
-            <button data-p="friend" class="p on"><b>Friend</b>warm &amp; casual</button>
-            <button data-p="coach" class="p"><b>Coach</b>pushes you</button>
-            <button data-p="mentor" class="p"><b>Mentor</b>calm &amp; wise</button>
-            <button data-p="strict" class="p"><b>Strict</b>no-nonsense</button>
+            <button data-p="friend" class="p on"><b>Friend</b><i>warm &amp; casual</i></button>
+            <button data-p="coach" class="p"><b>Coach</b><i>pushes you</i></button>
+            <button data-p="mentor" class="p"><b>Mentor</b><i>calm &amp; wise</i></button>
+            <button data-p="strict" class="p"><b>Strict</b><i>no-nonsense</i></button>
           </div>
         </div>
-      </div>
+      </section>
 
       <p class="tips">
-        You'll find me in the corner of every page — <strong>drag</strong> me anywhere,
+        You'll find me in the corner of every page. <strong>Drag</strong> me anywhere,
         <strong>tap</strong> me to talk. I work right away; add a Gemini key in Settings for the
         smartest conversations.
       </p>
 
       <button id="go">Let's go</button>
+      <p class="foot">ON-DEVICE · PRIVATE BY DEFAULT · BETA</p>
     </main>
     <script type="module" src="./main.ts"></script>
   </body>

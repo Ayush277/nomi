@@ -33,6 +33,17 @@ describe('validateSignal — the ADR-5 choke point', () => {
     expect(validateSignal({ ...good, data: { slug: 'two-sum', difficulty: 'Trivial' } })).toBeNull();
   });
 
+  it('accepts the GeeksforGeeks adapter with its own difficulty scale', () => {
+    const gfg = {
+      adapter: 'geeksforgeeks',
+      kind: 'submission_accepted',
+      data: { slug: 'nth-fibonacci-number', difficulty: 'Basic' },
+    };
+    expect(validateSignal(gfg)).toEqual(gfg);
+    // 'Basic'/'School' are GfG-only — must not leak into LeetCode's enum.
+    expect(validateSignal({ ...good, data: { slug: 'two-sum', difficulty: 'Basic' } })).toBeNull();
+  });
+
   it('rejects malformed envelopes', () => {
     expect(validateSignal({})).toBeNull();
     expect(validateSignal({ adapter: 'leetcode', kind: 'submission_accepted', data: null })).toBeNull();

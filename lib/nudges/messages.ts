@@ -42,6 +42,31 @@ export const NUDGE_TEMPLATES: Record<string, string[]> = {
     "Hey. I'm around if you need anything today.",
     "New day. Let's see where it goes.",
   ],
+  'intention-ignored': [
+    "Earlier you meant to {what} — still want to? No pressure.",
+    "That thing you set aside — {what} — it's still on your list whenever you're ready.",
+    'Circling back: you wanted to {what}. Might be a good moment.',
+  ],
+  stuck: [
+    "You've been on this one about {minutes} minutes. Want to talk through the approach?",
+    'Tough problem? I can be a rubber duck if it helps to think out loud.',
+    "{minutes} minutes on this — a fresh angle sometimes shakes it loose. Want to try one?",
+  ],
+  'wellbeing-latenight': [
+    "It's {clock} and you've been going a while — {reason}. Nothing's on fire; want to save your spot and pick it up fresh tomorrow?",
+    "Late one — {clock}, {reason}. I'll keep everything right here if you want to rest and come back to it.",
+    "{clock} already. You've put in the hours — {reason}. Bed might beat one more tab. I've got your place.",
+  ],
+  'wellbeing-break': [
+    "You've been at it a good stretch — {reason}. A five-minute breather might do more than pushing through. I'll hold your place.",
+    "{reason}. Maybe step away for a moment? It'll all be right here when you're back.",
+    "Noticed {reason}. No rush — a quick pause, some water, then back to it?",
+  ],
+  'wellbeing-longday': [
+    "That's a full day already — {reason}. You've earned a real pause. Want to wrap up on a good note?",
+    "Solid day behind you — {reason}. No pressure to keep going; I'll remember where things are.",
+    "{reason} today. That's plenty. Calling it here is a win, not a quit.",
+  ],
 };
 
 export function fillTemplate(template: string, slots: Record<string, string>): string {

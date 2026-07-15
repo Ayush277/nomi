@@ -9,6 +9,8 @@ export interface SavedLink {
   title: string;
   domain: string;
   ts: number;
+  /** Set once when Nomi gently resurfaces a forgotten save — never twice. */
+  resurfacedTs?: number;
 }
 
 const BAG_KEY = 'nomi:bag';
@@ -27,9 +29,29 @@ export async function saveLink(link: Omit<SavedLink, 'id' | 'ts'>): Promise<Save
   return entry;
 }
 
+export async function markResurfaced(id: string): Promise<void> {
+  const links = await getLinks();
+  await chrome.storage.local.set({
+    [BAG_KEY]: links.map((l) => (l.id === id ? { ...l, resurfacedTs: Date.now() } : l)),
+  });
+}
+
 export async function removeLink(id: string): Promise<void> {
   const links = await getLinks();
   await chrome.storage.local.set({ [BAG_KEY]: links.filter((l) => l.id !== id) });
+}
+
+export async function clearBag(): Promise<void> {
+  await chrome.storage.local.set({ [BAG_KEY]: [] });
+}
+
+/** "remove/delete/forget the link about X", "unsave that page", "clear my bag". */
+export function isRemoveLink(text: string): boolean {
+  return (
+    /\b(remove|delete|forget|drop|unsave|clear|wipe)\b.*\b(link|links|page|pages|bookmark|saved|bag|it|that)\b/i.test(
+      text,
+    ) || /\b(clear|empty|wipe)\s+(my\s+)?bag\b/i.test(text)
+  );
 }
 
 export function isSaveLink(text: string): boolean {
@@ -51,7 +73,7 @@ export function isRecallLinks(text: string): boolean {
 export function searchLinks(query: string, links: SavedLink[]): SavedLink[] {
   const words = query
     .toLowerCase()
-    .replace(/\b(what|which|show|give|me|the|link|links|page|pages|saved|save|about|for|find|get|my|did|i|you|last|week|remember)\b/g, '')
+    .replace(/\b(what|which|show|give|me|the|link|links|page|pages|saved|save|about|for|find|get|my|did|i|you|last|week|remember|remove|delete|forget|drop|unsave|from|bag|are|is|was|were|have|has|had|all|list|tell|nomi|please)\b/g, '')
     .split(/\s+/)
     .filter((w) => w.length > 2);
   const sorted = [...links].sort((a, b) => b.ts - a.ts);

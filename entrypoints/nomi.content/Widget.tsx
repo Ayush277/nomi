@@ -1,12 +1,18 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { type CSSProperties, type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { PERSONALITIES } from '../../lib/persona';
 import { DEFAULT_PROFILE, PROFILE_KEY, type NomiProfile } from '../../lib/profile';
+import { DEFAULT_SETTINGS } from '../../lib/types';
 import type { ChatMessage, MoodState } from '../../lib/types';
 
 interface Bubble {
   id: string;
   text: string;
   fx?: string;
+  /** True only for replies to a VOICE ask — those speak; everything else is
+   * a silent notification (the user's rule: talk only when talked to). */
+  speak?: boolean;
+  /** After a spoken reply, open the mic once for a follow-up question. */
+  followUp?: boolean;
 }
 
 type FxKind = 'electric' | 'flame' | 'water';
@@ -87,14 +93,37 @@ function chime(kind: 'start' | 'end'): void {
 /** Soft, warm delivery: prefer the natural system voices, strip emoji,
  * slow down a touch. Voices load async, so re-pick until they exist. */
 let cachedVoice: SpeechSynthesisVoice | null | undefined;
+let voiceHinglish = false; // kept in sync with settings.language by the widget
 if ('speechSynthesis' in globalThis) {
   speechSynthesis.addEventListener?.('voiceschanged', () => (cachedVoice = undefined));
 }
 
-function pickVoice(): SpeechSynthesisVoice | null {
+/** Switch the spoken voice between English and Hinglish (Indian) presets. */
+function setVoiceLanguage(hinglish: boolean): void {
+  if (hinglish !== voiceHinglish) {
+    voiceHinglish = hinglish;
+    cachedVoice = undefined; // re-pick against the new preference
+  }
+}
+
+function pickVoice(hinglish = false): SpeechSynthesisVoice | null {
   if (cachedVoice !== undefined) return cachedVoice;
   const voices = speechSynthesis.getVoices();
   if (voices.length === 0) return null; // not loaded yet — retry next time
+
+  if (hinglish) {
+    // Indian voices read romanized Hinglish far more naturally. Prefer an
+    // Indian-English voice, then a Hindi voice, then any en-IN, then fall back.
+    const preferIn = ['Rishi', 'Isha', 'Veena', 'Lekha', 'Google हिन्दी', 'Google Hindi'];
+    cachedVoice =
+      voices.find((v) => preferIn.some((p) => v.name.includes(p))) ??
+      voices.find((v) => v.lang === 'en-IN' || v.lang === 'hi-IN') ??
+      voices.find((v) => v.lang.startsWith('en')) ??
+      voices[0] ??
+      null;
+    return cachedVoice;
+  }
+
   const en = voices.filter((v) => v.lang.startsWith('en'));
   // Named warm female voices, best first.
   const prefer = [
@@ -123,13 +152,24 @@ interface SpeakCbs {
  * no pause/resume hack, which is what caused the "cracking". */
 function speak(text: string, cbs: SpeakCbs = {}): void {
   if (!('speechSynthesis' in window)) return;
-  const clean = text.replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/gu, '').trim();
+  const clean = text
+    // Markdown links [label](url) → just say the label.
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '$1')
+    // Read a URL as the site's NAME, never "h-t-t-p-s-colon-slash-slash-w-w-w".
+    .replace(
+      /\b(?:https?:\/\/)?(?:www\.)?([a-z0-9-]{2,})\.(?:com|org|net|io|dev|ai|co|in|so|app|md|gov|edu|xyz|me|tv|us|uk|gg)\b(?:\/\S*)?/gi,
+      '$1',
+    )
+    .replace(/\bhttps?:\/\/\S+/gi, 'a link') // any leftover URL
+    .replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/gu, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
   if (!clean) {
     cbs.onEnd?.();
     return;
   }
   speechSynthesis.cancel();
-  const v = pickVoice();
+  const v = pickVoice(voiceHinglish);
   const chunks = (clean.match(/[^.!?\n]+[.!?]*/g) ?? [clean])
     .flatMap((s) => (s.length > 180 ? s.split(/,\s*/) : [s]))
     .map((s) => s.trim())
@@ -149,6 +189,54 @@ function speak(text: string, cbs: SpeakCbs = {}): void {
   });
 }
 
+/** Classify a bubble by its text so it gets the right icon + accent colour —
+ * turns plain nudges into little typed notification popups. */
+function bubbleKind(text: string): string {
+  const t = text.toLowerCase();
+  if (/time'?s up|\btimer\b|⏲/.test(t)) return 'timer';
+  if (/\bremind|you asked me to|you wanted to|don'?t forget|still on your list/.test(t)) return 'remind';
+  if (/accepted|solved|nice work|🎉|in a row|milestone|crushed|good stuff/.test(t)) return 'win';
+  if (/\bbreak\b|step away|stretch|water|breather|pause|late one|call it|rest\b|wrap up/.test(t)) return 'care';
+  if (/^(hey|hi+|hello|welcome back|morning)|right here|i'?m listening|i'?m around|beside you/.test(t)) return 'hi';
+  return 'say';
+}
+const BUBBLE_ICONS: Record<string, string> = {
+  timer: '⏲️', remind: '🔔', win: '🎉', care: '💜', hi: '👋', say: '💬',
+};
+function bubbleIcon(text: string): string {
+  return BUBBLE_ICONS[bubbleKind(text)] ?? '💬';
+}
+
+/** Render a chat message with clickable links — supports [label](url) and bare
+ * URLs — so saved links (the bag) can be opened with a tap. */
+function renderMessage(text: string): ReactNode[] {
+  const re = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|(https?:\/\/[^\s]+)/g;
+  const out: ReactNode[] = [];
+  let last = 0;
+  let m: RegExpExecArray | null;
+  let k = 0;
+  while ((m = re.exec(text))) {
+    if (m.index > last) out.push(text.slice(last, m.index));
+    const label = m[1] ?? m[3];
+    const url = m[2] ?? m[3];
+    out.push(
+      <a
+        key={k++}
+        href={url}
+        target="_blank"
+        rel="noreferrer"
+        className="nomi-link"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {label}
+      </a>,
+    );
+    last = re.lastIndex;
+  }
+  if (last < text.length) out.push(text.slice(last));
+  return out;
+}
+
 export function Widget() {
   const [pos, setPos] = useState<Pos>(DEFAULT_POS);
   const [bubble, setBubble] = useState<Bubble | null>(null);
@@ -156,8 +244,19 @@ export function Widget() {
   const [taskFx, setTaskFx] = useState<'store' | 'accept' | 'done' | null>(null);
   const [paused, setPaused] = useState(false);
   const [voiceOn, setVoiceOn] = useState(true);
+  const [alwaysVisible, setAlwaysVisible] = useState(DEFAULT_SETTINGS.alwaysVisible);
+  const [widgetScale, setWidgetScale] = useState(DEFAULT_SETTINGS.widgetScale);
+  const [orbTheme, setOrbTheme] = useState<string>(DEFAULT_SETTINGS.orbTheme);
+  const alwaysVisibleRef = useRef(DEFAULT_SETTINGS.alwaysVisible);
   const [mood, setMood] = useState<MoodState>({ kind: 'idle' });
   const [chatOpen, setChatOpen] = useState(false);
+  // Satellites: collapsed to one concise chip by default; a tap unfolds them.
+  const [orbitOpen, setOrbitOpen] = useState(false);
+  useEffect(() => {
+    if (!orbitOpen) return;
+    const t = setTimeout(() => setOrbitOpen(false), 10000); // fold back on their own
+    return () => clearTimeout(t);
+  }, [orbitOpen]);
   const [dragging, setDragging] = useState(false);
   const [voiceStatus, setVoiceStatus] = useState<{
     status: string;
@@ -263,6 +362,10 @@ export function Widget() {
   const [draft, setDraft] = useState('');
   const [thinking, setThinking] = useState(false);
   const [reminders, setReminders] = useState<Record<string, { what: string; at: number }>>({});
+  const [bagCount, setBagCount] = useState(0);
+  const [intentCount, setIntentCount] = useState(0);
+  const [currentVisit, setCurrentVisit] = useState<{ domain: string; startTs: number } | null>(null);
+  const [, setTick] = useState(0); // 1s heartbeat so live time/timer chips update
   const [focusSess, setFocusSess] = useState<{ until: number; minutes: number } | null>(null);
   const [, setClockTick] = useState(0); // re-render for countdown chips
   const [profile, setProfile] = useState<NomiProfile>(DEFAULT_PROFILE);
@@ -297,9 +400,15 @@ export function Widget() {
   // Speak with the best local system voice (prefers a downloaded Enhanced/
   // Premium female pack). Gemini is used to answer & transcribe, not to talk.
   const speakSmart = useCallback(
-    (text: string) => {
+    (text: string, onDone?: () => void) => {
       stopSpeaking();
-      speak(text, { onStart: () => setSpeaking(true), onEnd: () => setSpeaking(false) });
+      speak(text, {
+        onStart: () => setSpeaking(true),
+        onEnd: () => {
+          setSpeaking(false);
+          onDone?.();
+        },
+      });
     },
     [stopSpeaking],
   );
@@ -309,13 +418,23 @@ export function Widget() {
   // Initial state + follow changes from background/settings.
   useEffect(() => {
     chrome.storage.local
-      .get([POS_KEY, SETTINGS_KEY, 'nomi:reminders', 'nomi:focusSession'])
+      .get([POS_KEY, SETTINGS_KEY, 'nomi:reminders', 'nomi:focusSession', 'nomi:bag', 'nomi:intentions'])
       .then((stored) => {
         if (stored[POS_KEY]) setPos(stored[POS_KEY]);
         setPaused(Boolean(stored[SETTINGS_KEY]?.paused));
         setVoiceOn(stored[SETTINGS_KEY]?.voice ?? true);
+        setAlwaysVisible(stored[SETTINGS_KEY]?.alwaysVisible ?? DEFAULT_SETTINGS.alwaysVisible);
+        setWidgetScale(stored[SETTINGS_KEY]?.widgetScale ?? DEFAULT_SETTINGS.widgetScale);
+        setOrbTheme(stored[SETTINGS_KEY]?.orbTheme ?? DEFAULT_SETTINGS.orbTheme);
+        setVoiceLanguage(stored[SETTINGS_KEY]?.language === 'hinglish');
         if (stored['nomi:reminders']) setReminders(stored['nomi:reminders']);
         if (stored['nomi:focusSession']) setFocusSess(stored['nomi:focusSession']);
+        setBagCount(Array.isArray(stored['nomi:bag']) ? stored['nomi:bag'].length : 0);
+        setIntentCount(
+          Array.isArray(stored['nomi:intentions'])
+            ? stored['nomi:intentions'].filter((i: { status?: string }) => i.status === 'open').length
+            : 0,
+        );
       })
       .catch(() => {}); // orphaned after an extension reload — stay quiet
     chrome.storage.local
@@ -330,17 +449,19 @@ export function Widget() {
     loadStats();
     const statsTimer = setInterval(loadStats, 60000);
     chrome.storage.session
-      .get([BUBBLE_KEY, CHAT_KEY, MOOD_KEY])
+      .get([BUBBLE_KEY, CHAT_KEY, MOOD_KEY, 'nomi:currentVisit'])
       .then((stored) => {
         if (stored[BUBBLE_KEY]) setBubble(stored[BUBBLE_KEY]);
         if (stored[CHAT_KEY]) setMessages(stored[CHAT_KEY]);
         if (stored[MOOD_KEY]) setMood(stored[MOOD_KEY]);
+        if (stored['nomi:currentVisit']) setCurrentVisit(stored['nomi:currentVisit']);
       })
       .catch(() => {});
     const onChanged = (changes: Record<string, chrome.storage.StorageChange>, area: string) => {
       if (area === 'session' && changes[BUBBLE_KEY]) setBubble(changes[BUBBLE_KEY].newValue ?? null);
       if (area === 'session' && changes[CHAT_KEY]) setMessages(changes[CHAT_KEY].newValue ?? []);
       if (area === 'session' && changes[MOOD_KEY]?.newValue) setMood(changes[MOOD_KEY].newValue);
+      if (area === 'session' && changes['nomi:currentVisit']) setCurrentVisit(changes['nomi:currentVisit'].newValue ?? null);
       if (area === 'session' && changes['nomi:voiceStatus']?.newValue) {
         const vs = changes['nomi:voiceStatus'].newValue;
         setVoiceStatus(vs);
@@ -356,12 +477,24 @@ export function Widget() {
         }
       }
       if (area === 'local' && changes[SETTINGS_KEY]) {
-        setPaused(Boolean(changes[SETTINGS_KEY].newValue?.paused));
-        setVoiceOn(changes[SETTINGS_KEY].newValue?.voice ?? true);
+        const s = changes[SETTINGS_KEY].newValue;
+        setPaused(Boolean(s?.paused));
+        setVoiceOn(s?.voice ?? true);
+        setAlwaysVisible(s?.alwaysVisible ?? DEFAULT_SETTINGS.alwaysVisible);
+        setWidgetScale(s?.widgetScale ?? DEFAULT_SETTINGS.widgetScale);
+        setOrbTheme(s?.orbTheme ?? DEFAULT_SETTINGS.orbTheme);
+        setVoiceLanguage(s?.language === 'hinglish');
       }
       if (area === 'local' && changes[POS_KEY]?.newValue) setPos(changes[POS_KEY].newValue);
       if (area === 'local' && changes['nomi:reminders']) {
         setReminders(changes['nomi:reminders'].newValue ?? {});
+      }
+      if (area === 'local' && changes['nomi:bag']) {
+        setBagCount(Array.isArray(changes['nomi:bag'].newValue) ? changes['nomi:bag'].newValue.length : 0);
+      }
+      if (area === 'local' && changes['nomi:intentions']) {
+        const v = changes['nomi:intentions'].newValue;
+        setIntentCount(Array.isArray(v) ? v.filter((i: { status?: string }) => i.status === 'open').length : 0);
       }
       if (area === 'local' && changes['nomi:focusSession']) {
         setFocusSess(changes['nomi:focusSession'].newValue ?? null);
@@ -387,6 +520,8 @@ export function Widget() {
   const wake = useCallback(() => {
     setDocked(false);
     if (idleTimer.current) clearTimeout(idleTimer.current);
+    // When the owner asked Nomi to stay put, never arm the tuck-away timer.
+    if (alwaysVisibleRef.current) return;
     idleTimer.current = setTimeout(() => setDocked(true), 30000);
   }, []);
 
@@ -396,6 +531,26 @@ export function Widget() {
       if (idleTimer.current) clearTimeout(idleTimer.current);
     };
   }, [wake]);
+
+  // 1s heartbeat so the live chips (time on this site, timer countdown) update.
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (document.visibilityState === 'visible') setTick((t) => t + 1);
+    }, 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Keep the tuck behavior in sync when the setting flips at runtime: staying
+  // visible pops it back out and disarms the timer; turning it off re-arms.
+  useEffect(() => {
+    alwaysVisibleRef.current = alwaysVisible;
+    if (alwaysVisible) {
+      setDocked(false);
+      if (idleTimer.current) clearTimeout(idleTimer.current);
+    } else {
+      wake();
+    }
+  }, [alwaysVisible, wake]);
 
   useEffect(() => {
     if (bubble || chatOpen || listening || mood.kind === 'celebrate') wake();
@@ -414,17 +569,10 @@ export function Widget() {
   // Physical actions that arrive attached to bubbles.
   useEffect(() => {
     if (!bubble?.fx) return;
-    if (bubble.fx === 'water') {
-      runFx('water');
-      setAqua(true);
-      const t = setTimeout(() => setAqua(false), 2600);
-      return () => clearTimeout(t);
-    }
-    if (bubble.fx === 'stretch') {
-      setStretching(true);
-      const t = setTimeout(() => setStretching(false), 2500);
-      return () => clearTimeout(t);
-    }
+    // Water/stretch decorative particle "bubbles" removed — kept the note,
+    // dropped the gimmick. Meaningful wins still celebrate (electric/flame).
+    void setAqua;
+    void setStretching;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bubble?.id]);
 
@@ -472,17 +620,28 @@ export function Widget() {
   }, []);
 
   // Bubbles dissolve on their own; never more than one exists (DESIGN.md).
-  // If voice is on, the focused tab reads it aloud — local system voices only.
+  // Bubbles are SILENT notifications — with ONE exception: a reply to a
+  // question the user asked BY VOICE (bubble.speak). That one talks back, and
+  // then listens once for a follow-up, so a spoken exchange flows like a
+  // conversation. Silence ends it. Proactive bubbles never speak.
   useEffect(() => {
     if (!bubble) return;
     // A reminder/task surfacing → red "done / needs you" pulse.
     if (/\b(you wanted to|you asked me to|reminder|remind you|time —|you're on)\b/i.test(bubble.text)) {
       fireTaskFx('done');
     }
-    if (voiceOn && document.visibilityState === 'visible' && document.hasFocus()) {
-      speakSmart(bubble.text);
+    if (bubble.speak && voiceOn && document.visibilityState === 'visible' && document.hasFocus()) {
+      speakSmart(bubble.text, () => {
+        if (bubble.followUp) {
+          void chrome.runtime.sendMessage({ type: 'nomi:listenOnce' }).catch(() => {});
+        }
+      });
     }
-    const t = setTimeout(() => closeBubble(bubble, 'expired'), BUBBLE_LIFETIME_MS);
+    // Spoken replies get room to finish talking + the follow-up listen window.
+    const t = setTimeout(
+      () => closeBubble(bubble, 'expired'),
+      bubble.speak ? Math.max(BUBBLE_LIFETIME_MS, 4000 + bubble.text.length * 70) : BUBBLE_LIFETIME_MS,
+    );
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bubble?.id]);
@@ -554,7 +713,14 @@ export function Widget() {
       setThinking(true);
       let reply = 'Hmm, I lost my train of thought — try that again?';
       try {
-        const res = await chrome.runtime.sendMessage({ type: 'nomi:chat', text: q, history: messages });
+        const res = await chrome.runtime.sendMessage({
+          type: 'nomi:chat',
+          text: q,
+          history: messages,
+          // The page the user is ACTUALLY chatting from — so "save this page"
+          // can never grab the wrong tab (or none) via focus-dependent queries.
+          page: { url: location.href, title: document.title },
+        });
         if (res?.text) reply = res.text;
         if ('seeing' in (res ?? {})) setSeeing(res.seeing ?? null);
       } catch {}
@@ -671,6 +837,12 @@ export function Widget() {
         return snapped;
       });
     } else {
+      // While Nomi is talking, a tap on the ball means "stop" — pause the
+      // voice right there and consume the tap. Nothing else happens.
+      if (speaking) {
+        stopSpeaking();
+        return;
+      }
       // A tap always reaches the chat — a bubble in the way gets dismissed
       // on the same tap, never swallowing the interaction.
       if (bubble) closeBubble(bubble, 'dismissed');
@@ -686,7 +858,7 @@ export function Widget() {
       }
     }
     wake();
-  }, [bubble, closeBubble, chatOpen, startListening, wake]);
+  }, [bubble, closeBubble, chatOpen, startListening, wake, speaking, stopSpeaking]);
 
   const moodClass =
     mood.kind === 'celebrate' ? ' celebrate' : mood.kind === 'focus' ? ' focusing' : '';
@@ -708,17 +880,56 @@ export function Widget() {
     mood.kind !== 'celebrate' &&
     !dragging;
 
+  // Buddy status orbiting the orb: live, useful, prioritized — at most four.
+  const nowMs = Date.now();
+  const pending = Object.values(reminders).filter((r) => r && r.at > nowMs);
+  const timers = pending.filter((r) => /timer|⏲/i.test(r.what ?? ''));
+  const plainReminders = pending.filter((r) => !/timer|⏲/i.test(r.what ?? ''));
+  const nextTimer = timers.slice().sort((a, b) => a.at - b.at)[0];
+  const nextTimerMs = nextTimer ? nextTimer.at - nowMs : 0;
+  const siteMin = currentVisit ? Math.floor((nowMs - currentVisit.startTs) / 60000) : 0;
+  const fmtLeft = (ms: number) => (ms < 60000 ? `${Math.max(1, Math.ceil(ms / 1000))}s` : `${Math.round(ms / 60000)}m`);
+
+  type Chip = { icon: string; label: string; title: string; query: string };
+  const candidates: Chip[] = [];
+  if (nextTimer)
+    candidates.push({ icon: '⏲️', label: fmtLeft(nextTimerMs), title: `timer — ${fmtLeft(nextTimerMs)} left`, query: 'what are my reminders?' });
+  if (siteMin >= 1 && currentVisit)
+    candidates.push({ icon: '🌐', label: `${siteMin}m`, title: `${siteMin} min on ${currentVisit.domain}`, query: "how's today going?" });
+  if (plainReminders.length)
+    candidates.push({ icon: '🔔', label: String(plainReminders.length), title: `${plainReminders.length} reminder(s)`, query: 'what are my reminders?' });
+  if (bagCount)
+    candidates.push({ icon: '🔖', label: String(bagCount), title: `${bagCount} saved — tap to see`, query: 'what did I save?' });
+  if (intentCount)
+    candidates.push({ icon: '📌', label: String(intentCount), title: `${intentCount} open intention(s)`, query: 'what am I putting off?' });
+  const positions = ['nw', 'ne', 'sw', 'se'];
+  const orbitChips = candidates.slice(0, 4).map((c, i) => ({ ...c, pos: positions[i] }));
+  // Satellites step aside while a bubble is talking — never overlap words.
+  const showOrbit = !tucked && !chatOpen && !bubble && orbitChips.length > 0;
+  // One concise satellite by default; tapping it unfolds the rest.
+  const summaryChip = orbitChips[0];
+
   return (
     <div className={`nomi-root${reducedMotion ? ' reduced' : ''}`}>
       <div
         className={`nomi-anchor${dragging ? ' drag-live' : ''}${tucked ? ' docked' : ''}${
           tucked && peeking ? ' peeking' : ''
         }`}
-        style={{ right: `${pos.right}px`, bottom: `${pos.bottom}px` }}
+        style={
+          {
+            right: `${pos.right}px`,
+            bottom: `${pos.bottom}px`,
+            '--nomi-scale': widgetScale,
+          } as CSSProperties
+        }
         onPointerEnter={wake}
       >
         {bubble && !chatOpen && (
-          <div className="nomi-bubble" onClick={() => closeBubble(bubble, 'dismissed')}>
+          <div
+            className={`nomi-bubble kind-${bubbleKind(bubble.text)}`}
+            onClick={() => closeBubble(bubble, 'dismissed')}
+          >
+            <span className="nomi-bubble-icon" aria-hidden="true">{bubbleIcon(bubble.text)}</span>
             {bubble.text}
           </div>
         )}
@@ -773,7 +984,7 @@ export function Widget() {
               )}
               {messages.map((m, i) => (
                 <div key={i} className={`nomi-msg ${m.role}`}>
-                  {m.text}
+                  {m.role === 'nomi' ? renderMessage(m.text) : m.text}
                 </div>
               ))}
               {thinking && <div className="nomi-msg nomi nomi-thinking">…</div>}
@@ -874,6 +1085,53 @@ export function Widget() {
 
         <div className="nomi-orbwrap">
           <canvas ref={fxRef} className="nomi-fx" width={300} height={300} aria-hidden="true" />
+          <div className="nomi-air" aria-hidden="true">
+            <span /><span /><span /><span /><span />
+          </div>
+          {showOrbit && !orbitOpen && summaryChip && (
+            <div className="nomi-orbit">
+              <span
+                className="nomi-orbit-chip pos-ne oc-summary"
+                title={
+                  orbitChips.length > 1
+                    ? `${summaryChip.title} — tap for ${orbitChips.length - 1} more`
+                    : summaryChip.title
+                }
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (orbitChips.length > 1) setOrbitOpen(true);
+                  else {
+                    setChatOpen(true);
+                    void send(summaryChip.query);
+                  }
+                }}
+              >
+                <span className="oc-ico" aria-hidden="true">{summaryChip.icon}</span>
+                <span className="oc-lbl">{summaryChip.label}</span>
+                {orbitChips.length > 1 && <span className="oc-more">+{orbitChips.length - 1}</span>}
+              </span>
+            </div>
+          )}
+          {showOrbit && orbitOpen && (
+            <div className="nomi-orbit">
+              {orbitChips.map((c) => (
+                <span
+                  key={c.pos}
+                  className={`nomi-orbit-chip pos-${c.pos} oc-in`}
+                  title={c.title}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setOrbitOpen(false);
+                    setChatOpen(true);
+                    void send(c.query);
+                  }}
+                >
+                  <span className="oc-ico" aria-hidden="true">{c.icon}</span>
+                  <span className="oc-lbl">{c.label}</span>
+                </span>
+              ))}
+            </div>
+          )}
           {(() => {
             // Productivity rings — live coding & learning progress around the
             // avatar (Core Vision #10). Two Apple-Watch-style arcs.
@@ -939,7 +1197,7 @@ export function Widget() {
               speaking ? ' speaking' : ''
             }${listening ? ' listening' : ''}${thinking ? ' thinking' : ''}${
               taskFx ? ` fx-${taskFx}` : ''
-            }`}
+            }${orbTheme && orbTheme !== 'aurora' ? ` theme-${orbTheme}` : ''}`}
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}

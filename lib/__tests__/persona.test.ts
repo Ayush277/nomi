@@ -10,6 +10,16 @@ describe('buildSystemPrompt', () => {
     expect(p).toMatch(/quiet so far/);
   });
 
+  it('adds a Hinglish instruction only when language is hinglish', () => {
+    const en = buildSystemPrompt({ profile: DEFAULT_PROFILE, todayContext: 'x', language: 'en' });
+    expect(en).not.toMatch(/hinglish/i);
+
+    const hi = buildSystemPrompt({ profile: DEFAULT_PROFILE, todayContext: 'x', language: 'hinglish' });
+    expect(hi).toMatch(/reply in Hinglish/i);
+    expect(hi).toMatch(/Roman|Latin/i);
+    expect(hi).toMatch(/Never use Devanagari/i);
+  });
+
   it('weaves in name, goal, and facts when known', () => {
     const p = buildSystemPrompt({
       profile: {
